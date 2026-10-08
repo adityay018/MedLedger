@@ -1,0 +1,27 @@
+{
+  "name": "medledger-backend",
+  "version": "1.0.0",
+  "description": "MedLedger Pharmaceutical Supply Chain Management - Backend API (Oracle DB & Express)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "morgan": "^1.10.0",
+    "oracledb": "^6.6.0"
+  },
+  "keywords": [
+    "medledger",
+    "pharmaceutical",
+    "supply-chain",
+    "oracledb",
+    "plsql",
+    "express"
+  ],
+  "author": "MedLedger Team",
+  "license": "MIT"
+}
