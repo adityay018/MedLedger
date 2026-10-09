@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "MedLedger — A Blockchain-Based Anti-Counterfeit Pharmaceutical Supply Chain",
   "scripts": {
+    "build": "npm --prefix frontend run build",
+    "build:frontend": "npm --prefix frontend run build",
     "dev": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend start",
     "dev:frontend": "npm --prefix frontend run dev",
