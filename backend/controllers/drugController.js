@@ -92,7 +92,16 @@ exports.deleteDrug = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (db.isUsingOracle()) {
-      await db.execute(`DELETE FROM DRUG WHERE drug_id = :id`, { id });
+      // Check for dependent batches
+      const batchCheck = await db.execute(`SELECT COUNT(*) AS count FROM BATCH WHERE drug_id = :id`, { id: Number(id) });
+      const batchCount = batchCheck.rows[0]?.COUNT || 0;
+      if (batchCount > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot delete Drug #${id}: ${batchCount} manufactured batch(es) reference this drug. Referential integrity preserved.`
+        });
+      }
+      await db.execute(`DELETE FROM DRUG WHERE drug_id = :id`, { id: Number(id) });
       return res.json({ success: true, message: 'Drug deleted successfully' });
     } else {
       db.mock.deleteDrug(id);
@@ -102,3 +111,4 @@ exports.deleteDrug = async (req, res, next) => {
     next(err);
   }
 };
+

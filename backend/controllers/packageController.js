@@ -133,6 +133,14 @@ exports.deletePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (db.isUsingOracle()) {
+      // Check if package is dispensed
+      const dispCheck = await db.execute(`SELECT dispense_id FROM PACKAGE WHERE package_id = :id`, { id: Number(id) });
+      if (dispCheck.rows && dispCheck.rows.length > 0 && dispCheck.rows[0].DISPENSE_ID) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot delete Package #${id}: Product was already dispensed to a patient (Dispense #${dispCheck.rows[0].DISPENSE_ID}). Pharmacovigilance record preserved.`
+        });
+      }
       await db.execute(`DELETE FROM PACKAGE WHERE package_id = :id`, { id });
       return res.json({ success: true, message: 'Package deleted successfully' });
     } else {
@@ -143,6 +151,7 @@ exports.deletePackage = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // ============================================================================
 // CORE FEATURE: VERIFY PACKAGE (anti-counterfeit verification via PL/SQL)

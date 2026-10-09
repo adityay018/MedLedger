@@ -106,3 +106,47 @@ exports.getRecallImpact = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.updateRecall = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason, status, recall_date } = req.body;
+    if (db.isUsingOracle()) {
+      await db.execute(
+        `UPDATE RECALL SET reason = NVL(:reason, reason), status = NVL(:status, status), recall_date = NVL(TO_DATE(:rdate, 'YYYY-MM-DD'), recall_date) WHERE recall_id = :id`,
+        { id: Number(id), reason: reason || null, status: status || null, rdate: recall_date || null }
+      );
+      return res.json({ success: true, message: `Recall #${id} updated successfully.` });
+    } else {
+      const updated = db.mock.updateRecall(id, req.body);
+      if (!updated) return res.status(404).json({ success: false, error: 'Recall not found' });
+      return res.json({ success: true, message: `Recall #${id} updated successfully.`, data: updated });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deleteRecall = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (db.isUsingOracle()) {
+      const checkRes = await db.execute(`SELECT COUNT(*) AS count FROM BATCH WHERE recall_id = :id`, { id: Number(id) });
+      const count = checkRes.rows[0]?.COUNT || 0;
+      if (count > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot delete Recall #${id}: ${count} manufactured batch(es) are linked to this recall. Referential integrity preserved.`
+        });
+      }
+      await db.execute(`DELETE FROM RECALL WHERE recall_id = :id`, { id: Number(id) });
+      return res.json({ success: true, message: `Recall #${id} deleted successfully.` });
+    } else {
+      db.mock.deleteRecall(id);
+      return res.json({ success: true, message: `Recall #${id} deleted successfully.` });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+

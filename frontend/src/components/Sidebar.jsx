@@ -16,17 +16,18 @@ import {
 export default function Sidebar({ currentTab, onSelectTab, dbMode }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'verify', label: 'Verify Package', icon: ShieldCheck, highlight: true },
-    { id: 'parties', label: 'Parties', icon: Users },
     { id: 'drugs', label: 'Drugs', icon: Pill },
     { id: 'batches', label: 'Batches', icon: Layers },
-    { id: 'quality-tests', label: 'Quality Tests', icon: FlaskConical },
     { id: 'packages', label: 'Packages', icon: Package },
     { id: 'shipments', label: 'Shipments', icon: Truck },
+    { id: 'quality-tests', label: 'Quality Tests', icon: FlaskConical },
     { id: 'recalls', label: 'Recalls', icon: AlertTriangle },
     { id: 'dispensing', label: 'Dispensing', icon: Receipt },
-    { id: 'analytics', label: 'SQL Analytics', icon: Database, badge: '12 Qs' },
+    { id: 'analytics', label: 'Analytics', icon: Database, badge: '12 Qs' },
+    { id: 'verify', label: 'Package Verification', icon: ShieldCheck, highlight: true },
+    { id: 'parties', label: 'Parties', icon: Users },
   ];
+
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200/80 flex flex-col min-h-screen">

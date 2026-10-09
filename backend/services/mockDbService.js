@@ -160,6 +160,12 @@ const mockDbService = {
 
   deleteDrug: (id) => {
     const numId = Number(id);
+    const hasBatches = batches.some(b => b.drug_id === numId);
+    if (hasBatches) {
+      const err = new Error(`Cannot delete Drug #${id}: Dependent batches exist in the BATCH relation. Referential integrity preserved.`);
+      err.statusCode = 409;
+      throw err;
+    }
     drugs = drugs.filter(d => d.drug_id !== numId);
     return true;
   },
@@ -223,7 +229,7 @@ const mockDbService = {
       batch_id: nextId,
       drug_id: drugId,
       manufacturer_id: mfgId,
-      recall_id: null,
+      recall_id: data.recall_id ? Number(data.recall_id) : null,
       batch_status: data.batch_status || 'RELEASED',
       manufacture_date: data.manufacture_date || new Date().toISOString().split('T')[0]
     };
@@ -237,7 +243,8 @@ const mockDbService = {
     if (idx === -1) return null;
     
     const oldStatus = batches[idx].batch_status;
-    batches[idx] = { ...batches[idx], ...data, batch_id: numId };
+    const recallVal = data.recall_id !== undefined ? (data.recall_id ? Number(data.recall_id) : null) : batches[idx].recall_id;
+    batches[idx] = { ...batches[idx], ...data, recall_id: recallVal, batch_id: numId };
 
     // Trigger simulation: trg_batch_recall_cascade
     if (batches[idx].batch_status === 'RECALLED' && oldStatus !== 'RECALLED') {
@@ -253,6 +260,12 @@ const mockDbService = {
 
   deleteBatch: (id) => {
     const numId = Number(id);
+    const hasPkgs = packages.some(p => p.batch_id === numId);
+    if (hasPkgs) {
+      const err = new Error(`Cannot delete Batch #${id}: Dependent packages exist in the PACKAGE relation. Referential integrity preserved.`);
+      err.statusCode = 409;
+      throw err;
+    }
     batches = batches.filter(b => b.batch_id !== numId);
     return true;
   },
@@ -285,6 +298,21 @@ const mockDbService = {
     qualityTests.push(newTest);
     return newTest;
   },
+
+  updateQualityTest: (id, data) => {
+    const numId = Number(id);
+    const idx = qualityTests.findIndex(q => q.test_id === numId);
+    if (idx === -1) return null;
+    qualityTests[idx] = { ...qualityTests[idx], ...data, test_id: numId };
+    return qualityTests[idx];
+  },
+
+  deleteQualityTest: (id) => {
+    const numId = Number(id);
+    qualityTests = qualityTests.filter(q => q.test_id !== numId);
+    return true;
+  },
+
 
   // --------------------------------------------------------------------------
   // PACKAGES (with PL/SQL FUNCTION verify_package logic)
@@ -358,10 +386,17 @@ const mockDbService = {
 
   deletePackage: (id) => {
     const numId = Number(id);
+    const pkg = packages.find(p => p.package_id === numId);
+    if (pkg && (pkg.dispense_id || pkg.status === 'DISPENSED')) {
+      const err = new Error(`Cannot delete Package #${id}: Product was already dispensed to a patient. Pharmacovigilance record preserved.`);
+      err.statusCode = 409;
+      throw err;
+    }
     packages = packages.filter(p => p.package_id !== numId);
     contains = contains.filter(c => c.package_id !== numId);
     return true;
   },
+
 
   // PL/SQL verify_package logic
   verifyPackage: (identifier) => {
@@ -541,7 +576,28 @@ const mockDbService = {
     return newRecall;
   },
 
+  updateRecall: (id, data) => {
+    const numId = Number(id);
+    const idx = recalls.findIndex(r => r.recall_id === numId);
+    if (idx === -1) return null;
+    recalls[idx] = { ...recalls[idx], ...data, recall_id: numId };
+    return recalls[idx];
+  },
+
+  deleteRecall: (id) => {
+    const numId = Number(id);
+    const hasBatches = batches.some(b => b.recall_id === numId);
+    if (hasBatches) {
+      const err = new Error(`Cannot delete Recall #${id}: Batches are currently linked to this recall notice. Referential integrity preserved.`);
+      err.statusCode = 409;
+      throw err;
+    }
+    recalls = recalls.filter(r => r.recall_id !== numId);
+    return true;
+  },
+
   // PL/SQL process_recall procedure logic
+
   processRecall: (recallId) => {
     const numId = Number(recallId);
     const recall = recalls.find(r => r.recall_id === numId);
@@ -1084,7 +1140,23 @@ ORDER BY r.recall_id, pkg.package_id;`,
       packagesCount: packages.length,
       shipmentsCount: shipments.length,
       recallsCount: recalls.length,
-      dispensingsCount: dispensings.length
+      activeRecallsCount: recalls.filter(r => r.status === 'ACTIVE').length,
+      dispensingsCount: dispensings.length,
+      dispensedPackagesCount: packages.filter(p => p.status === 'DISPENSED').length
+    };
+
+    const totalQ = qualityTests.length;
+    const passedQ = qualityTests.filter(t => t.status === 'PASSED').length;
+    const failedQ = qualityTests.filter(t => t.status === 'FAILED').length;
+    const pendingQ = qualityTests.filter(t => t.status === 'PENDING').length;
+    const passRate = totalQ > 0 ? Math.round((passedQ / totalQ) * 100) : 0;
+
+    const qualityTestSummary = {
+      total: totalQ,
+      passed: passedQ,
+      failed: failedQ,
+      pending: pendingQ,
+      passRate
     };
 
     // Distributions
@@ -1114,7 +1186,7 @@ ORDER BY r.recall_id, pkg.package_id;`,
       };
     });
 
-    const recentRecalls = recalls.slice(-3).reverse();
+    const recentRecalls = recalls.slice(-5).reverse();
     const recentDispensings = dispensings.slice(-5).reverse().map(d => {
       const ph = parties.find(p => p.party_id === d.pharmacy_id);
       return {
@@ -1125,6 +1197,7 @@ ORDER BY r.recall_id, pkg.package_id;`,
 
     return {
       kpi,
+      qualityTestSummary,
       batchStatusCounts,
       shipmentStatusCounts,
       packageStatusCounts,
@@ -1133,6 +1206,7 @@ ORDER BY r.recall_id, pkg.package_id;`,
       recentDispensings
     };
   }
+
 };
 
 module.exports = mockDbService;

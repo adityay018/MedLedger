@@ -62,3 +62,39 @@ exports.createQualityTest = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.updateQualityTest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { test_type, result, status, test_date } = req.body;
+    if (db.isUsingOracle()) {
+      await db.execute(
+        `UPDATE QUALITY_TEST SET test_type = NVL(:ttype, test_type), result = NVL(:res, result), status = NVL(:status, status), test_date = NVL(TO_DATE(:tdate, 'YYYY-MM-DD'), test_date) WHERE test_id = :id`,
+        { id: Number(id), ttype: test_type || null, res: result || null, status: status || null, tdate: test_date || null }
+      );
+      return res.json({ success: true, message: `Quality test #${id} updated successfully.` });
+    } else {
+      const updated = db.mock.updateQualityTest(id, req.body);
+      if (!updated) return res.status(404).json({ success: false, error: 'Quality test not found' });
+      return res.json({ success: true, message: `Quality test #${id} updated successfully.`, data: updated });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deleteQualityTest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (db.isUsingOracle()) {
+      await db.execute(`DELETE FROM QUALITY_TEST WHERE test_id = :id`, { id: Number(id) });
+      return res.json({ success: true, message: `Quality test #${id} deleted successfully.` });
+    } else {
+      db.mock.deleteQualityTest(id);
+      return res.json({ success: true, message: `Quality test #${id} deleted successfully.` });
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+

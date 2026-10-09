@@ -67,7 +67,7 @@ exports.getBatchById = async (req, res, next) => {
 // PL/SQL register_batch procedure call
 exports.createBatch = async (req, res, next) => {
   try {
-    const { drug_id, manufacturer_id, manufacture_date, batch_status } = req.body;
+    const { drug_id, manufacturer_id, manufacture_date, batch_status, recall_id } = req.body;
     if (!drug_id || !manufacturer_id) {
       return res.status(400).json({ success: false, error: 'drug_id and manufacturer_id are required' });
     }
@@ -94,6 +94,14 @@ exports.createBatch = async (req, res, next) => {
 
       const result = await db.execute(plsql, binds);
       const generatedId = result.outBinds.new_batch_id;
+
+      if (recall_id) {
+        await db.execute(
+          `UPDATE BATCH SET recall_id = :rid WHERE batch_id = :bid`,
+          { rid: Number(recall_id), bid: generatedId }
+        );
+      }
+
       return res.status(201).json({
         success: true,
         message: `Batch #${generatedId} successfully registered via PL/SQL register_batch procedure`,
@@ -119,8 +127,8 @@ exports.updateBatch = async (req, res, next) => {
 
     if (db.isUsingOracle()) {
       await db.execute(
-        `UPDATE BATCH SET batch_status = NVL(:status, batch_status), recall_id = NVL(:recall_id, recall_id) WHERE batch_id = :id`,
-        { id, status: batch_status || null, recall_id: recall_id || null }
+        `UPDATE BATCH SET batch_status = NVL(:status, batch_status), recall_id = :recall_id WHERE batch_id = :id`,
+        { id: Number(id), status: batch_status || null, recall_id: recall_id !== undefined ? (recall_id ? Number(recall_id) : null) : null }
       );
       return res.json({ success: true, message: 'Batch updated successfully' });
     } else {
@@ -137,7 +145,16 @@ exports.deleteBatch = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (db.isUsingOracle()) {
-      await db.execute(`DELETE FROM BATCH WHERE batch_id = :id`, { id });
+      // Check for dependent packages
+      const pkgCheck = await db.execute(`SELECT COUNT(*) AS count FROM PACKAGE WHERE batch_id = :id`, { id: Number(id) });
+      const pkgCount = pkgCheck.rows[0]?.COUNT || 0;
+      if (pkgCount > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Cannot delete Batch #${id}: ${pkgCount} dependent serialized package(s) exist in PACKAGE table. Referential integrity preserved.`
+        });
+      }
+      await db.execute(`DELETE FROM BATCH WHERE batch_id = :id`, { id: Number(id) });
       return res.json({ success: true, message: 'Batch deleted successfully' });
     } else {
       db.mock.deleteBatch(id);
@@ -147,3 +164,4 @@ exports.deleteBatch = async (req, res, next) => {
     next(err);
   }
 };
+

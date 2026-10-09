@@ -53,6 +53,8 @@ export const api = {
   // Quality Tests
   getQualityTests: (batchId) => request(`/quality-tests${batchId ? `?batchId=${batchId}` : ''}`),
   createQualityTest: (data) => request('/quality-tests', { method: 'POST', body: JSON.stringify(data) }),
+  updateQualityTest: (id, data) => request(`/quality-tests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteQualityTest: (id) => request(`/quality-tests/${id}`, { method: 'DELETE' }),
 
   // Packages & Verification
   getPackages: (status, qr) => {
@@ -78,8 +80,11 @@ export const api = {
   // Recalls
   getRecalls: () => request('/recalls'),
   createRecall: (data) => request('/recalls', { method: 'POST', body: JSON.stringify(data) }),
+  updateRecall: (id, data) => request(`/recalls/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRecall: (id) => request(`/recalls/${id}`, { method: 'DELETE' }),
   processRecall: (id) => request(`/recalls/${id}/process`, { method: 'POST' }),
   getRecallImpact: (id) => request(`/recalls/${id}/impact`),
+
 
   // Dispensing
   getDispensings: () => request('/dispensings'),
