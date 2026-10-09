@@ -1,12 +1,12 @@
 -- ============================================================================
 -- SCRIPT: 02_create_tables.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
--- PURPOSE: Create the 13 base relations matching the DA1 BCNF/EER specification.
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
+-- PURPOSE: Create the 13 base relations matching the BCNF/EER specification.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
 -- ============================================================================
 
 PROMPT ===================================================;
-PROMPT Creating MedLedger Base Tables (DA1 BCNF Schema)...;
+PROMPT Creating MedLedger Base Tables (BCNF Schema)...;
 PROMPT ===================================================;
 
 -- 1. PARTY (Superclass)

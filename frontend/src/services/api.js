@@ -1,5 +1,7 @@
 // MedLedger API Client
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
+  ? import.meta.env.VITE_API_URL 
+  : 'http://localhost:5000/api';
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
@@ -90,7 +92,25 @@ export const api = {
   getDispensings: () => request('/dispensings'),
   createDispensing: (data) => request('/dispensings', { method: 'POST', body: JSON.stringify(data) }),
 
-  // SQL Analytics
+  // SQL Analytics (15 Core Queries)
   getAnalyticsList: () => request('/analytics'),
-  runAnalyticsQuery: (queryId) => request(`/analytics/${queryId}`)
+  runAnalyticsQuery: (queryId, params = {}) => {
+    const qStr = new URLSearchParams(params).toString();
+    return request(`/analytics/${queryId}${qStr ? `?${qStr}` : ''}`);
+  },
+  getDrugCatalogue: () => request('/analytics/drug-catalogue'),
+  getBatchTraceability: () => request('/analytics/batch-traceability'),
+  getPackageInventory: () => request('/analytics/package-inventory'),
+  getShipmentTracking: () => request('/analytics/shipment-tracking'),
+  getInTransitShipments: () => request('/analytics/in-transit-shipments'),
+  getFailedQualityTests: () => request('/analytics/failed-quality-tests'),
+  getActiveRecalls: () => request('/analytics/active-recalls'),
+  getRecallImpactAnalytics: () => request('/analytics/recall-impact'),
+  getManufacturerPerformance: () => request('/analytics/manufacturer-performance'),
+  getPharmacyDispensing: () => request('/analytics/pharmacy-dispensing'),
+  getTopDrugs: () => request('/analytics/top-drugs'),
+  getUndispensedPackages: () => request('/analytics/undispensed-packages'),
+  getPackageShipmentHistory: (packageId) => request(`/analytics/package-shipment-history${packageId ? `/${encodeURIComponent(packageId)}` : ''}`),
+  getPendingQualityTests: () => request('/analytics/pending-quality-tests'),
+  getVerifyPackageAudit: (identifier) => request(`/analytics/verify-package?identifier=${encodeURIComponent(identifier || '')}`)
 };

@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SCRIPT: 06_plsql.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: PL/SQL Stored Procedures, Functions, Triggers, and Verification.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
 -- ============================================================================
@@ -16,22 +16,33 @@ PROMPT =========================================================================
 -- 1. PROCEDURE: register_batch
 -- OBJECTIVE: Safely registers a manufactured batch after validating that both
 --            the manufacturer and the drug formulation exist in the system.
+--            Validates required fields, checks for duplicate IDs, and enforces
+--            referential integrity.
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE register_batch (
     p_drug_id          IN  DRUG.drug_id%TYPE,
     p_manufacturer_id  IN  MANUFACTURER.party_id%TYPE,
     p_manufacture_date IN  DATE,
     p_batch_status     IN  VARCHAR2,
-    p_new_batch_id     OUT NUMBER
+    p_new_batch_id     OUT NUMBER,
+    p_batch_id         IN  NUMBER DEFAULT NULL
 )
 AS
-    v_mfg_count   NUMBER := 0;
-    v_drug_count  NUMBER := 0;
-    v_next_id     NUMBER;
+    v_mfg_count    NUMBER := 0;
+    v_drug_count   NUMBER := 0;
+    v_dup_count    NUMBER := 0;
+    v_target_id    NUMBER;
+    e_null_fields  EXCEPTION;
     e_invalid_mfg  EXCEPTION;
     e_invalid_drug EXCEPTION;
+    e_duplicate_id EXCEPTION;
 BEGIN
-    -- 1. Validate manufacturer existence in subclass table
+    -- 1. Validate required fields
+    IF p_drug_id IS NULL OR p_manufacturer_id IS NULL THEN
+        RAISE e_null_fields;
+    END IF;
+
+    -- 2. Validate manufacturer existence in subclass table
     SELECT COUNT(*) INTO v_mfg_count
     FROM MANUFACTURER
     WHERE party_id = p_manufacturer_id;
@@ -40,7 +51,7 @@ BEGIN
         RAISE e_invalid_mfg;
     END IF;
 
-    -- 2. Validate drug formulation existence
+    -- 3. Validate drug formulation existence
     SELECT COUNT(*) INTO v_drug_count
     FROM DRUG
     WHERE drug_id = p_drug_id;
@@ -49,10 +60,21 @@ BEGIN
         RAISE e_invalid_drug;
     END IF;
 
-    -- 3. Obtain next batch identifier
-    SELECT NVL(MAX(batch_id), 200) + 1 INTO v_next_id FROM BATCH;
+    -- 4. Check for duplicate ID if manual ID was passed; otherwise obtain next batch ID
+    IF p_batch_id IS NOT NULL THEN
+        SELECT COUNT(*) INTO v_dup_count
+        FROM BATCH
+        WHERE batch_id = p_batch_id;
 
-    -- 4. Insert new batch
+        IF v_dup_count > 0 THEN
+            RAISE e_duplicate_id;
+        END IF;
+        v_target_id := p_batch_id;
+    ELSE
+        SELECT NVL(MAX(batch_id), 200) + 1 INTO v_target_id FROM BATCH;
+    END IF;
+
+    -- 5. Insert new batch
     INSERT INTO BATCH (
         batch_id,
         drug_id,
@@ -61,7 +83,7 @@ BEGIN
         batch_status,
         manufacture_date
     ) VALUES (
-        v_next_id,
+        v_target_id,
         p_drug_id,
         p_manufacturer_id,
         NULL,
@@ -69,16 +91,22 @@ BEGIN
         NVL(p_manufacture_date, SYSDATE)
     );
 
-    p_new_batch_id := v_next_id;
-    DBMS_OUTPUT.PUT_LINE('[SUCCESS] Batch #' || v_next_id || ' successfully registered for Drug #' || p_drug_id || ' by Manufacturer #' || p_manufacturer_id);
+    p_new_batch_id := v_target_id;
+    DBMS_OUTPUT.PUT_LINE('[SUCCESS] Batch #' || v_target_id || ' successfully registered for Drug #' || p_drug_id || ' by Manufacturer #' || p_manufacturer_id);
 
 EXCEPTION
+    WHEN e_null_fields THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_batch: Required fields p_drug_id and p_manufacturer_id cannot be NULL.');
+        RAISE_APPLICATION_ERROR(-20005, 'Missing Required Fields: p_drug_id and p_manufacturer_id must be provided.');
     WHEN e_invalid_mfg THEN
         DBMS_OUTPUT.PUT_LINE('[ERROR] register_batch: Party ID ' || p_manufacturer_id || ' is not a licensed MANUFACTURER.');
         RAISE_APPLICATION_ERROR(-20001, 'Invalid Manufacturer: Party ID does not exist in MANUFACTURER table.');
     WHEN e_invalid_drug THEN
         DBMS_OUTPUT.PUT_LINE('[ERROR] register_batch: Drug ID ' || p_drug_id || ' does not exist in DRUG table.');
         RAISE_APPLICATION_ERROR(-20002, 'Invalid Drug: Drug ID does not exist.');
+    WHEN e_duplicate_id THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_batch: Batch ID ' || p_batch_id || ' already exists in BATCH table.');
+        RAISE_APPLICATION_ERROR(-20006, 'Duplicate Batch ID: Batch with ID ' || p_batch_id || ' already exists.');
     WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('[ERROR] register_batch encountered unexpected error: ' || SQLERRM);
         RAISE;
@@ -148,7 +176,104 @@ END process_recall;
 /
 
 -- ----------------------------------------------------------------------------
--- 3. FUNCTION: verify_package
+-- 3. PROCEDURE: register_shipment
+-- OBJECTIVE: Registers a custody transfer shipment between two licensed supply
+--            chain parties. Validates sender and receiver existence in PARTY,
+--            enforces sender <> receiver rule, and validates transport mode.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE register_shipment (
+    p_sender_id       IN  PARTY.party_id%TYPE,
+    p_receiver_id     IN  PARTY.party_id%TYPE,
+    p_shipment_date   IN  DATE,
+    p_status          IN  VARCHAR2,
+    p_mode            IN  VARCHAR2,
+    p_new_shipment_id OUT NUMBER
+)
+AS
+    v_sender_count   NUMBER := 0;
+    v_receiver_count NUMBER := 0;
+    v_next_id        NUMBER;
+    e_null_parties   EXCEPTION;
+    e_same_parties   EXCEPTION;
+    e_invalid_sender EXCEPTION;
+    e_invalid_rcvr   EXCEPTION;
+    e_invalid_mode   EXCEPTION;
+BEGIN
+    -- 1. Validate non-null party references
+    IF p_sender_id IS NULL OR p_receiver_id IS NULL THEN
+        RAISE e_null_parties;
+    END IF;
+
+    -- 2. Validate sender != receiver
+    IF p_sender_id = p_receiver_id THEN
+        RAISE e_same_parties;
+    END IF;
+
+    -- 3. Validate sender existence in PARTY
+    SELECT COUNT(*) INTO v_sender_count FROM PARTY WHERE party_id = p_sender_id;
+    IF v_sender_count = 0 THEN
+        RAISE e_invalid_sender;
+    END IF;
+
+    -- 4. Validate receiver existence in PARTY
+    SELECT COUNT(*) INTO v_receiver_count FROM PARTY WHERE party_id = p_receiver_id;
+    IF v_receiver_count = 0 THEN
+        RAISE e_invalid_rcvr;
+    END IF;
+
+    -- 5. Validate transport mode domain
+    IF NVL(p_mode, 'ROAD_LOGISTICS') NOT IN (
+        'AIR_CARGO', 'COLD_CHAIN_TRUCK', 'EXPRESS_COURIER', 'MARITIME', 'ROAD_LOGISTICS'
+    ) THEN
+        RAISE e_invalid_mode;
+    END IF;
+
+    -- 6. Generate next shipment ID
+    SELECT NVL(MAX(shipment_id), 400) + 1 INTO v_next_id FROM SHIPMENT;
+
+    INSERT INTO SHIPMENT (
+        shipment_id,
+        sender_party_id,
+        receiver_party_id,
+        shipment_date,
+        status,
+        mode
+    ) VALUES (
+        v_next_id,
+        p_sender_id,
+        p_receiver_id,
+        NVL(p_shipment_date, SYSDATE),
+        NVL(p_status, 'CREATED'),
+        NVL(p_mode, 'ROAD_LOGISTICS')
+    );
+
+    p_new_shipment_id := v_next_id;
+    DBMS_OUTPUT.PUT_LINE('[SUCCESS] Shipment #' || v_next_id || ' registered: Sender #' || p_sender_id || ' -> Receiver #' || p_receiver_id || ' (Mode: ' || NVL(p_mode, 'ROAD_LOGISTICS') || ')');
+
+EXCEPTION
+    WHEN e_null_parties THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment: sender_party_id and receiver_party_id cannot be NULL.');
+        RAISE_APPLICATION_ERROR(-20010, 'Required Parties Missing: sender_party_id and receiver_party_id must be provided.');
+    WHEN e_same_parties THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment: sender and receiver cannot be identical.');
+        RAISE_APPLICATION_ERROR(-20011, 'Invalid Shipment: Sender and Receiver parties cannot be identical.');
+    WHEN e_invalid_sender THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment: Sender party ID ' || p_sender_id || ' does not exist.');
+        RAISE_APPLICATION_ERROR(-20012, 'Invalid Sender: Party ID does not exist in PARTY table.');
+    WHEN e_invalid_rcvr THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment: Receiver party ID ' || p_receiver_id || ' does not exist.');
+        RAISE_APPLICATION_ERROR(-20013, 'Invalid Receiver: Party ID does not exist in PARTY table.');
+    WHEN e_invalid_mode THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment: Invalid transport mode: ' || p_mode);
+        RAISE_APPLICATION_ERROR(-20014, 'Invalid Mode: Transport mode not permitted by domain constraint.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('[ERROR] register_shipment failed: ' || SQLERRM);
+        RAISE;
+END register_shipment;
+/
+
+-- ----------------------------------------------------------------------------
+-- 4. FUNCTION: verify_package
 -- OBJECTIVE: Core Anti-Counterfeit Verification logic.
 --            Accepts either package_id or qr_code.
 --            Returns: 'AUTHENTIC', 'RECALLED', 'TAMPERED', 'FAILED_TEST', or 'INVALID'.
@@ -219,11 +344,11 @@ END verify_package;
 /
 
 -- ----------------------------------------------------------------------------
--- 4. FUNCTION: recall_impact
+-- 5. FUNCTION: get_recall_impact
 -- OBJECTIVE: Computes the aggregate impact of a recall notice (total batches
---            and total serialized packages compromised across the network).
+--            and total serialized packages quarantined across the network).
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION recall_impact (
+CREATE OR REPLACE FUNCTION get_recall_impact (
     p_recall_id IN RECALL.recall_id%TYPE
 )
 RETURN VARCHAR2
@@ -253,11 +378,22 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         RETURN 'Impact Calculation Error: ' || SQLERRM;
+END get_recall_impact;
+/
+
+-- Function alias for backward compatibility with queries referencing recall_impact
+CREATE OR REPLACE FUNCTION recall_impact (
+    p_recall_id IN RECALL.recall_id%TYPE
+)
+RETURN VARCHAR2
+AS
+BEGIN
+    RETURN get_recall_impact(p_recall_id);
 END recall_impact;
 /
 
 -- ----------------------------------------------------------------------------
--- 5. TRIGGER: trg_check_package_qty
+-- 6. TRIGGER: trg_check_package_qty
 -- OBJECTIVE: Business rule trigger preventing negative or zero package units.
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE TRIGGER trg_check_package_qty
@@ -271,7 +407,7 @@ END trg_check_package_qty;
 /
 
 -- ----------------------------------------------------------------------------
--- 6. TRIGGER: trg_batch_recall_cascade
+-- 7. TRIGGER: trg_batch_recall_cascade
 -- OBJECTIVE: Automatically cascades recall state to all related packages whenever
 --            a batch's status is changed to 'RECALLED'.
 -- ----------------------------------------------------------------------------
@@ -285,6 +421,28 @@ BEGIN
     WHERE batch_id = :NEW.batch_id
       AND status <> 'DISPENSED';
 END trg_batch_recall_cascade;
+/
+
+-- ----------------------------------------------------------------------------
+-- 8. TRIGGER: trg_package_state_transition
+-- OBJECTIVE: Validates package lifecycle state transitions.
+--            - Prevents dispensing a product under active recall.
+--            - Prevents dispensed product from reverting to active distribution.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER trg_package_state_transition
+BEFORE UPDATE OF status ON PACKAGE
+FOR EACH ROW
+BEGIN
+    -- Prevent dispensing recalled product
+    IF :NEW.status = 'DISPENSED' AND :OLD.status = 'RECALLED' THEN
+        RAISE_APPLICATION_ERROR(-20020, 'Safety Violation: Cannot dispense a RECALLED package unit. Quarantined for patient safety.');
+    END IF;
+
+    -- Prevent dispensed product from re-entering transit
+    IF :OLD.status = 'DISPENSED' AND :NEW.status IN ('PACKAGED', 'IN_TRANSIT') THEN
+        RAISE_APPLICATION_ERROR(-20021, 'Lifecycle Violation: Dispensed package cannot re-enter active supply chain distribution.');
+    END IF;
+END trg_package_state_transition;
 /
 
 PROMPT ============================================================================;

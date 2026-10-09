@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SCRIPT: 04_insert_data.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: Insert realistic, consistent synthetic pharmaceutical data across
 --          all 13 tables matching all foreign keys and constraints.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
@@ -327,6 +327,8 @@ INSERT INTO PACKAGE (package_id, batch_id, dispense_id, package_size, packaged_a
 (431, 218, NULL, '100 Capsules / Bottle', TO_DATE('2025-10-16', 'YYYY-MM-DD'), 'QR-MED-218-01-L1', 'RECALLED', 100);
 INSERT INTO PACKAGE (package_id, batch_id, dispense_id, package_size, packaged_at, qr_code, status, quantity_total) VALUES
 (432, 217, 612, '30 Tablets / Box', TO_DATE('2026-03-02', 'YYYY-MM-DD'), 'QR-MED-217-01-M1', 'DISPENSED', 30);
+INSERT INTO PACKAGE (package_id, batch_id, dispense_id, package_size, packaged_at, qr_code, status, quantity_total) VALUES
+(433, 209, NULL, '5 x 3ml SoloStar Pens', TO_DATE('2026-02-12', 'YYYY-MM-DD'), 'QR-MED-209-01-N1', 'QUARANTINED', 100);
 
 -- ----------------------------------------------------------------------------
 -- 12. SHIPMENT (16 records)

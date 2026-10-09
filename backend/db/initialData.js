@@ -154,7 +154,8 @@ module.exports = {
     { package_id: 429, batch_id: 211, dispense_id: 608, package_size: '6 Tablets / Strip', packaged_at: '2026-01-26', qr_code: 'QR-MED-211-02-J2', status: 'DISPENSED', quantity_total: 6 },
     { package_id: 430, batch_id: 212, dispense_id: 610, package_size: '60 Tablets / Box', packaged_at: '2026-02-06', qr_code: 'QR-MED-212-01-K1', status: 'DISPENSED', quantity_total: 60 },
     { package_id: 431, batch_id: 218, dispense_id: null, package_size: '100 Capsules / Bottle', packaged_at: '2025-10-16', qr_code: 'QR-MED-218-01-L1', status: 'RECALLED', quantity_total: 100 },
-    { package_id: 432, batch_id: 217, dispense_id: 612, package_size: '30 Tablets / Box', packaged_at: '2026-03-02', qr_code: 'QR-MED-217-01-M1', status: 'DISPENSED', quantity_total: 30 }
+    { package_id: 432, batch_id: 217, dispense_id: 612, package_size: '30 Tablets / Box', packaged_at: '2026-03-02', qr_code: 'QR-MED-217-01-M1', status: 'DISPENSED', quantity_total: 30 },
+    { package_id: 433, batch_id: 209, dispense_id: null, package_size: '5 x 3ml SoloStar Pens', packaged_at: '2026-02-12', qr_code: 'QR-MED-209-01-N1', status: 'QUARANTINED', quantity_total: 100 }
   ],
   shipments: [
     { shipment_id: 701, sender_party_id: 1, receiver_party_id: 5, shipment_date: '2025-11-20', status: 'DELIVERED', mode: 'AIR_CARGO' },

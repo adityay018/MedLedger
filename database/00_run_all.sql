@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SCRIPT: 00_run_all.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: Master execution script to run all database scripts sequentially.
 -- USAGE IN SQL*PLUS / SQL DEVELOPER:
 --    @database/00_run_all.sql

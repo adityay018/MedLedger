@@ -22,10 +22,10 @@ function errorHandler(err, req, res, next) {
     } else if (err.message.includes('ORA-01400')) {
       statusCode = 400;
       message = 'Mandatory field missing: Cannot insert NULL into a required database column.';
-    } else if (err.message.includes('ORA-20001') || err.message.includes('ORA-20002') || err.message.includes('ORA-20003') || err.message.includes('ORA-20004')) {
+    } else if (/ORA-20\d{3}/.test(err.message) || (typeof err.code === 'number' && err.code < 0)) {
       statusCode = 400;
       // Extract custom PL/SQL application error message
-      const match = err.message.match(/ORA-2000\d:\s*([^(\n\r]+)/);
+      const match = err.message.match(/ORA-20\d{3}:\s*([^(\n\r]+)/);
       if (match && match[1]) {
         message = match[1].trim();
       }

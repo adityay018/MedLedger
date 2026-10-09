@@ -1,7 +1,7 @@
 -- ============================================================================
 -- SCRIPT: 07_demo.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
--- PURPOSE: Interactive Demonstration Script for University Viva / Review.
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
+-- PURPOSE: Interactive Demonstration Script for Schema Verification.
 --          Demonstrates PL/SQL procedures, functions, trigger behaviors,
 --          and exception handling in SQL*Plus or Oracle SQL Developer.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
@@ -45,19 +45,19 @@ END;
 /
 
 -- ----------------------------------------------------------------------------
--- DEMO 2: Executing recall_impact Function
+-- DEMO 2: Executing get_recall_impact Function
 -- Demonstrates: Aggregating supply chain compromise under a recall notice
 -- ----------------------------------------------------------------------------
 PROMPT;
 PROMPT ----------------------------------------------------------------------------;
-PROMPT [DEMO 2] Testing Recall Impact Assessment Function (recall_impact);
+PROMPT [DEMO 2] Testing Recall Impact Assessment Function (get_recall_impact);
 PROMPT ----------------------------------------------------------------------------;
 
 SELECT 
     recall_id,
     status,
     reason,
-    recall_impact(recall_id) AS supply_chain_blast_radius
+    get_recall_impact(recall_id) AS supply_chain_blast_radius
 FROM RECALL
 ORDER BY recall_id;
 
@@ -119,12 +119,65 @@ END;
 /
 
 -- ----------------------------------------------------------------------------
--- DEMO 5: Testing Trigger trg_batch_recall_cascade
+-- DEMO 5: Testing register_shipment Procedure
+-- Demonstrates: Registering a custody transfer between valid supply chain parties
+-- ----------------------------------------------------------------------------
+PROMPT;
+PROMPT ----------------------------------------------------------------------------;
+PROMPT [DEMO 5] Testing Shipment Registration Procedure (register_shipment);
+PROMPT ----------------------------------------------------------------------------;
+
+DECLARE
+    v_shipment_id NUMBER;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Calling register_shipment: Sender 1 (Pfizer) -> Receiver 5 (AmerisourceBergen)...');
+    register_shipment(
+        p_sender_id       => 1,
+        p_receiver_id     => 5,
+        p_shipment_date   => SYSDATE,
+        p_status          => 'CREATED',
+        p_mode            => 'COLD_CHAIN_TRUCK',
+        p_new_shipment_id => v_shipment_id
+    );
+    DBMS_OUTPUT.PUT_LINE('Returned OUT Parameter Shipment ID: ' || v_shipment_id);
+END;
+/
+
+-- ----------------------------------------------------------------------------
+-- DEMO 6: Demonstrating Exception Handling in register_shipment
+-- Demonstrates: Attempting to register shipment with identical sender & receiver
+-- ----------------------------------------------------------------------------
+PROMPT;
+PROMPT ----------------------------------------------------------------------------;
+PROMPT [DEMO 6] Testing Exception Handling (Identical Sender and Receiver = 1);
+PROMPT ----------------------------------------------------------------------------;
+
+DECLARE
+    v_dummy_shipment_id NUMBER;
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Attempting to register shipment with sender = 1 and receiver = 1...');
+    register_shipment(
+        p_sender_id       => 1,
+        p_receiver_id     => 1,
+        p_shipment_date   => SYSDATE,
+        p_status          => 'CREATED',
+        p_mode            => 'ROAD_LOGISTICS',
+        p_new_shipment_id => v_dummy_shipment_id
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SUCCESSFULLY CAUGHT EXPECTED EXCEPTION:');
+        DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE || ' | SQLERRM: ' || SQLERRM);
+END;
+/
+
+-- ----------------------------------------------------------------------------
+-- DEMO 7: Testing Trigger trg_batch_recall_cascade
 -- Demonstrates: Updating a batch status to RECALLED automatically flags packages
 -- ----------------------------------------------------------------------------
 PROMPT;
 PROMPT ----------------------------------------------------------------------------;
-PROMPT [DEMO 5] Testing Trigger trg_batch_recall_cascade;
+PROMPT [DEMO 7] Testing Trigger trg_batch_recall_cascade;
 PROMPT ----------------------------------------------------------------------------;
 
 PROMPT Before Batch Update: Package statuses for Batch 202:;
@@ -143,12 +196,12 @@ ROLLBACK;
 PROMPT Rolled back test batch status update.
 
 -- ----------------------------------------------------------------------------
--- DEMO 6: Testing Trigger trg_check_package_qty
+-- DEMO 8: Testing Trigger trg_check_package_qty
 -- Demonstrates: Preventing insertion of zero/negative package units
 -- ----------------------------------------------------------------------------
 PROMPT;
 PROMPT ----------------------------------------------------------------------------;
-PROMPT [DEMO 6] Testing Trigger trg_check_package_qty (Preventing quantity <= 0);
+PROMPT [DEMO 8] Testing Trigger trg_check_package_qty (Preventing quantity <= 0);
 PROMPT ----------------------------------------------------------------------------;
 
 BEGIN
@@ -162,6 +215,28 @@ BEGIN
 EXCEPTION
     WHEN OTHERS THEN
         DBMS_OUTPUT.PUT_LINE('SUCCESSFULLY CAUGHT TRIGGER EXCEPTION:');
+        DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE || ' | SQLERRM: ' || SQLERRM);
+END;
+/
+
+-- ----------------------------------------------------------------------------
+-- DEMO 9: Testing Trigger trg_package_state_transition
+-- Demonstrates: Preventing dispensing of a RECALLED package unit
+-- ----------------------------------------------------------------------------
+PROMPT;
+PROMPT ----------------------------------------------------------------------------;
+PROMPT [DEMO 9] Testing Trigger trg_package_state_transition (Preventing Recall Dispensing);
+PROMPT ----------------------------------------------------------------------------;
+
+BEGIN
+    -- Package 1 belongs to recalled Batch 201 (status = 'RECALLED')
+    DBMS_OUTPUT.PUT_LINE('Attempting to update status of RECALLED package 1 to DISPENSED...');
+    UPDATE PACKAGE
+    SET status = 'DISPENSED'
+    WHERE package_id = 1;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('SUCCESSFULLY CAUGHT STATE TRANSITION EXCEPTION:');
         DBMS_OUTPUT.PUT_LINE('SQLCODE: ' || SQLCODE || ' | SQLERRM: ' || SQLERRM);
 END;
 /

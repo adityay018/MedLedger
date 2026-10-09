@@ -13,14 +13,14 @@ export default function Navbar({ currentTab, onQuickVerify, dbMode }) {
     shipments: 'Custody Transfer Shipments',
     recalls: 'Regulatory & Manufacturer Recalls',
     dispensing: 'Retail Pharmacy Dispensing Events',
-    analytics: 'Relational Database SQL Analytics (Q1 - Q12)'
+    analytics: 'Supply Chain Analytics (Q1 - Q15)'
   };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-8 flex items-center justify-between sticky top-0 z-30">
       <div>
         <h2 className="text-base font-bold text-slate-800">{titles[currentTab] || 'MedLedger'}</h2>
-        <p className="text-xs text-slate-500">Oracle DBMS Relational Architecture | DA2 University Project</p>
+        <p className="text-xs text-slate-500">Traceability, Quality & Compliance | Enterprise Relational Architecture</p>
       </div>
 
       <div className="flex items-center gap-4">
@@ -36,7 +36,7 @@ export default function Navbar({ currentTab, onQuickVerify, dbMode }) {
         {/* Database indicator */}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-medium text-slate-700 border border-slate-200">
           <Database className="w-3.5 h-3.5 text-forest-700" />
-          <span>Engine: <strong className="text-forest-900">{dbMode === 'ORACLE' ? 'Oracle DB 21c' : 'Active Relational DB'}</strong></span>
+          <span>Engine: <strong className="text-forest-900">{dbMode === 'ORACLE' ? 'Oracle 21c (Persistent)' : 'Simulation Storage (Fallback)'}</strong></span>
         </div>
       </div>
     </header>

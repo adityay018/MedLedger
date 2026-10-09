@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SCRIPT: 01_drop_tables.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: Drop all 13 MedLedger tables in dependency-safe order.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
 -- ============================================================================

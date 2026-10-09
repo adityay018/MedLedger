@@ -1,3 +1,4 @@
+const oracledb = require('oracledb');
 const db = require('../config/db');
 
 exports.getAllShipments = async (req, res, next) => {
@@ -86,22 +87,35 @@ exports.createShipment = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Sender and receiver parties cannot be identical' });
     }
 
-    if (db.isUsingOracle()) {
-      const seqRes = await db.execute(`SELECT seq_shipment_id.NEXTVAL AS id FROM dual`);
-      const shipmentId = seqRes.rows[0].ID;
+    const validModes = ['AIR_CARGO', 'COLD_CHAIN_TRUCK', 'EXPRESS_COURIER', 'MARITIME', 'ROAD_LOGISTICS'];
+    if (mode && !validModes.includes(mode)) {
+      return res.status(400).json({ success: false, error: 'Invalid Mode: Transport mode not permitted by domain constraint.' });
+    }
 
-      await db.execute(
-        `INSERT INTO SHIPMENT (shipment_id, sender_party_id, receiver_party_id, shipment_date, status, mode)
-         VALUES (:id, :sender, :receiver, TO_DATE(:sdate, 'YYYY-MM-DD'), :status, :mode)`,
-        {
-          id: shipmentId,
-          sender: Number(sender_party_id),
-          receiver: Number(receiver_party_id),
-          sdate: shipment_date || new Date().toISOString().split('T')[0],
-          status: status || 'CREATED',
-          mode: mode || 'ROAD_LOGISTICS'
-        }
-      );
+    if (db.isUsingOracle()) {
+      const plsql = `
+        BEGIN
+          register_shipment(
+            p_sender_id       => :sender,
+            p_receiver_id     => :receiver,
+            p_shipment_date   => TO_DATE(:sdate, 'YYYY-MM-DD'),
+            p_status          => :status,
+            p_mode            => :mode,
+            p_new_shipment_id => :new_shipment_id
+          );
+        END;
+      `;
+      const binds = {
+        sender: Number(sender_party_id),
+        receiver: Number(receiver_party_id),
+        sdate: shipment_date || new Date().toISOString().split('T')[0],
+        status: status || 'CREATED',
+        mode: mode || 'ROAD_LOGISTICS',
+        new_shipment_id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
+      };
+
+      const result = await db.execute(plsql, binds);
+      const shipmentId = result.outBinds.new_shipment_id;
 
       // Populate CONTAINS bridge table
       if (Array.isArray(package_ids)) {
@@ -113,10 +127,18 @@ exports.createShipment = async (req, res, next) => {
         }
       }
 
-      return res.status(201).json({ success: true, message: 'Shipment created successfully', data: { shipment_id: shipmentId, ...req.body } });
+      return res.status(201).json({
+        success: true,
+        message: `Shipment #${shipmentId} registered successfully via PL/SQL register_shipment procedure`,
+        data: { shipment_id: shipmentId, ...req.body }
+      });
     } else {
-      const newShipment = db.mock.createShipment(req.body);
-      return res.status(201).json({ success: true, message: 'Shipment created successfully', data: newShipment });
+      const newShipment = db.mock.registerShipment(req.body);
+      return res.status(201).json({
+        success: true,
+        message: `Shipment #${newShipment.shipment_id} registered successfully via register_shipment`,
+        data: newShipment
+      });
     }
   } catch (err) {
     next(err);

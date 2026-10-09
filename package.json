@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "description": "MedLedger — A Blockchain-Based Anti-Counterfeit Pharmaceutical Supply Chain",
   "scripts": {
-    "install:all": "cd backend && npm install && cd ../frontend && npm install",
-    "start": "cd backend && npm start",
-    "backend": "cd backend && npm start",
-    "frontend": "cd frontend && npm run dev",
-    "db:init": "cd database && node setup_db.js"
+    "dev": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend start",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "start": "npm --prefix backend start",
+    "backend": "npm --prefix backend start",
+    "frontend": "npm --prefix frontend run dev",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "db:init": "node database/setup_db.js"
   },
   "keywords": [
     "medledger",

@@ -1,47 +1,31 @@
-# MedLedger — A Blockchain-Based Anti-Counterfeit Pharmaceutical Supply Chain
+# MedLedger — Pharmaceutical Supply Chain Intelligence
+
+### Traceability, Quality & Compliance
 
 [![Oracle Database](https://img.shields.io/badge/Database-Oracle%2021c%20%2F%20XE-F80000?logo=oracle&logoColor=white)](https://www.oracle.com/database/)
 [![Node.js](https://img.shields.io/badge/Backend-Node.js%20%7C%20Express-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite-61DAFB?logo=react&logoColor=black)](https://vitejs.dev/)
+[![React](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite-61DAFB?logo=react&logoColor=black)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Styling-Tailwind%20CSS-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
 
-> **Academic Coursework Project**: Database Management Systems (DA2)  
-> **Source of Truth**: EER Model, Generalization/Specialization Hierarchy, and Boyce–Codd Normal Form (BCNF) Relational Mapping from DA1.
+> **MedLedger** is a pharmaceutical supply-chain traceability platform that connects drug, batch, package, quality-testing, shipment, recall, and dispensing records to support product tracking and database-backed verification. Built upon an enterprise Boyce–Codd Normal Form (BCNF) relational schema, 15 advanced Oracle SQL analytical queries, and real-time anti-counterfeit verification.
 
 ---
 
 ## 1. Problem Statement
 
-Counterfeit and substandard pharmaceuticals pose a catastrophic global health crisis, responsible for over 1 million preventable deaths annually and eroding public confidence in healthcare systems. Conventional pharmaceutical supply chains rely on fragmented legacy databases and paper manifests, resulting in:
+Counterfeit and substandard pharmaceuticals pose a catastrophic global health crisis, responsible for over 1 million preventable deaths annually and eroding public confidence in healthcare systems. Conventional pharmaceutical supply chains suffer from:
 - **Blind Spots in Custody Transfer**: Inability to verify intermediate wholesale distributors and freight carriers.
 - **Delayed Recall Propagation**: Quarantined lots continue circulating at retail pharmacies for weeks following defect notices.
-- **Counterfeit Infiltration**: Counterfeiters duplicate packaging and packaging labels without tamper-evident serial verification.
+- **Counterfeit Infiltration**: Duplication of serial numbers and packaging without tamper-evident verification.
 
-**MedLedger** addresses these challenges by establishing a unified, cryptographically verified relational ledger tracking pharmaceutical custody from chemical formulation and batch testing to pharmacy dispensing.
-
----
-
-## 2. Project Objectives (DA2 Scope)
-
-1. **Relational Schema Integrity**: Implement the exact 13 BCNF relations derived in DA1 without schema degradation or ad-hoc column alterations.
-2. **Oracle 21c Compatibility**: Strictly adhere to Oracle SQL and PL/SQL syntactical standards (sequences, check constraints, foreign keys, triggers, stored procedures).
-3. **Database Programming with PL/SQL**:
-   - `PROCEDURE register_batch`: Validates licensed manufacturer status prior to batch generation.
-   - `PROCEDURE process_recall`: Cascades active recall notices across all child packages and batches.
-   - `FUNCTION verify_package`: Multi-stage anti-counterfeit verification evaluating status, test compliance, and recall flags.
-   - `FUNCTION recall_impact`: Computes the aggregate blast radius (quarantined packages and unit count).
-   - `TRIGGER trg_check_package_qty`: Enforces positive package volume constraints.
-   - `TRIGGER trg_batch_recall_cascade`: Automatically marks child packages as `RECALLED` upon batch status transition.
-4. **12 Analytical SQL Queries (Q1–Q12)**: Demonstrating advanced multi-table joins, self-joins on ISA superclasses, aggregations, `GROUP BY`, `HAVING`, and `EXISTS` subqueries.
-5. **Full-Stack Application**: Node.js + Express backend connecting via the official `oracledb` Thin Driver to a modern React 19 + Tailwind CSS pharmaceutical dashboard with full INSERT, UPDATE, and DELETE capabilities.
-6. **Dual-Mode Engine**: Operates seamlessly with live Oracle 21c/XE databases, with an automatic, resilient in-memory simulation fallback for instant evaluation.
+**MedLedger** addresses these challenges by establishing a unified, cryptographically structured relational ledger tracking pharmaceutical custody from chemical formulation and laboratory testing to pharmacy dispensing and patient handover.
 
 ---
 
-## 3. Database Architecture & BCNF Schema (13 Relations)
+## 2. Project Architecture & BCNF Relational Schema (13 Relations)
 
-The relational schema implements attribute-defined, disjoint, and total specialization on the `PARTY` entity:
+The relational schema implements attribute-defined, disjoint, and total specialization on the `PARTY` entity across 13 BCNF tables:
 
 ```
                           ┌────────────────────────┐
@@ -99,251 +83,329 @@ The relational schema implements attribute-defined, disjoint, and total speciali
 
 ---
 
-## 4. SQL Scripts Catalogue (`database/`)
+## 3. Phase 3: SQL Analytics Module & 15 Oracle Queries
 
-The SQL scripts are designed to execute directly in **Oracle SQL Developer** or **SQL\*Plus**:
+The Analytics module provides deep supply chain visibility through 15 advanced Oracle SQL queries executed through the backend. The queries are categorized into 6 operational domains:
+
+### Category Taxonomy & Query Index
+
+```
+Supply Chain Analytics
+ ├── 1. Drug & Batch Intelligence
+ │    ├── Query 1:  Drug Catalogue
+ │    ├── Query 2:  Batch Traceability
+ │    └── Query 11: Most Frequently Batched Drugs
+ ├── 2. Package Tracking
+ │    ├── Query 3:  Package Inventory
+ │    └── Query 12: Undispensed Packages
+ ├── 3. Shipment Analytics
+ │    ├── Query 4:  Shipment Tracking
+ │    ├── Query 5:  In-Transit Shipments
+ │    └── Query 13: Shipment History for a Package
+ ├── 4. Quality & Compliance
+ │    ├── Query 6:  Failed Quality Tests
+ │    └── Query 14: Pending or Failed Quality Tests
+ ├── 5. Recall Management
+ │    ├── Query 7:  Active Recalls
+ │    └── Query 8:  Recall Impact Analysis
+ └── 6. Manufacturer & Pharmacy Performance
+      ├── Query 9:  Manufacturer Performance
+      ├── Query 10: Pharmacy Dispensing Summary
+      └── Query 15: Package Verification Audit
+```
+
+### Detailed Query Catalog & DBMS Concepts
+
+| ID | Query Title | Category | Oracle SQL Concepts & Techniques | Objective |
+|---|---|---|---|---|
+| **Q1** | **Drug Catalogue** | Drug & Batch Intelligence | Projection, Ordering, NULL handling | List all registered drug formulations with names, descriptions, strengths, and dosage forms. |
+| **Q2** | **Batch Traceability** | Drug & Batch Intelligence | 3-Table `INNER JOIN`, Date formatting | Trace manufacturing pedigree: drug name, licensed manufacturer name, production date, and release status. |
+| **Q3** | **Package Inventory** | Package Tracking | Multi-table Joins, Status projection | Complete serialized inventory audit: package ID, QR code, parent batch, drug name, package size, and lifecycle state. |
+| **Q4** | **Shipment Tracking** | Shipment Analytics | Dual `JOIN` on same superclass (`PARTY`) with distinct aliases (`sender`, `receiver`) | Resolve custody transfer parties (`sender_party_id` and `receiver_party_id`), dates, transit modes, and delivery status. |
+| **Q5** | **In-Transit Shipments** | Shipment Analytics | Predicate filtering, `IN` clause | Real-time monitoring of shipments actively moving through the supply chain (`IN_TRANSIT`, `DISPATCHED`). |
+| **Q6** | **Failed Quality Tests** | Quality & Compliance | 3-Table `INNER JOIN`, Predicate filtering | Identify failed laboratory assays with test dates, assay types, laboratory results, batch IDs, and drug names. |
+| **Q7** | **Active Recalls** | Recall Management | 3-Table Join, Temporal filtering | Regulatory alert query listing active recall notices with reason, recall date, affected batches, and drug formulations. |
+| **Q8** | **Recall Impact Analysis** | Recall Management | 4-Table Join (`RECALL → BATCH → PACKAGE → DRUG`) | Determine the operational quarantine blast radius: identify all serialized packages belonging to batches under active recall. |
+| **Q9** | **Manufacturer Performance** | Manufacturer & Pharmacy | `LEFT OUTER JOIN`, `GROUP BY`, Aggregate `COUNT` | Performance accounting: count total batches produced by each manufacturer, including manufacturers with 0 batches. |
+| **Q10** | **Pharmacy Dispensing Summary** | Manufacturer & Pharmacy | `LEFT OUTER JOIN`, `GROUP BY`, Aggregates (`SUM`, `COUNT`), `NVL` | Dispensing volume analytics: calculate total unit quantity and dispensing event count across registered retail pharmacies. |
+| **Q11** | **Most Frequently Batched Drugs** | Drug & Batch Intelligence | `LEFT JOIN`, `GROUP BY`, Window function (`DENSE_RANK() OVER (...)`), `ORDER BY` | Volume ranking: rank pharmaceutical formulations by manufacturing lot frequency to identify top production items. |
+| **Q12** | **Undispensed Packages** | Package Tracking | Negative existence test (`WHERE p.dispense_id IS NULL AND NOT EXISTS (...)`) | Accurately identify un-dispensed serialized packages remaining in warehouses, wholesale transit, or pharmacy shelves. |
+| **Q13** | **Shipment History for a Package** | Shipment Analytics | Parameterized Bind (`:p_pkg_id`, `:p_qr`), 4-Table Join (`CONTAINS → SHIPMENT → PARTY x 2`) | Given a package ID or QR code, display the full chronological custody trail, senders, receivers, dates, and modes. |
+| **Q14** | **Pending or Failed Quality Tests** | Quality & Compliance | 3-Table Join, `IN ('FAILED', 'PENDING')`, `ORDER BY CASE` | Laboratory compliance backlog: list batches with unresolved or failed quality assays prioritized by severity. |
+| **Q15** | **Package Verification Audit** | Manufacturer & Pharmacy | Safe Parameterized Binds, Scalar Subqueries, 360° Data Aggregation | Full anti-counterfeit record audit for an identifier: drug, batch, manufacturer, lab tests summary, recall status, and dispensing record. |
+
+---
+
+## 4. Anti-Counterfeit Package Verification Workflow
+
+The Package Verification feature provides a database-backed verification panel accessible at `/verify` or via Query 15.
+
+### Priority Verdict Hierarchy
+
+When a user submits a **Package ID** or **QR Code**, the engine performs multi-table relational analysis and applies strict priority ordering:
+
+```
+                      [ User Inputs QR Code / ID ]
+                                   │
+                                   ▼
+                       Does package record exist?
+                                ├── No ──► [ NOT FOUND ]
+                                │
+                               Yes
+                                │
+                                ▼
+                   Is associated batch under ACTIVE recall?
+                                ├── Yes ─► [ RECALL ALERT ]  (Priority 1)
+                                │
+                                No
+                                │
+                                ▼
+               Did batch fail lab quality tests or marked TAMPERED?
+                                ├── Yes ─► [ QUALITY WARNING ]  (Priority 2)
+                                │
+                                No
+                                │
+                                ▼
+                   [ VERIFIED / VERIFIED (DISPENSED) ]  (Priority 3)
+```
+
+1. **`RECALL ALERT` (Highest Priority)**: Triggered if the associated batch has an `ACTIVE` recall or status `RECALLED`. Prevents dispensing even if lab tests passed.
+2. **`QUALITY WARNING`**: Triggered if any laboratory quality tests `FAILED` or the package status is `TAMPERED`.
+3. **`VERIFIED`**: Product record is valid and registered with passed tests and no active recall notices. (Sub-state `VERIFIED (DISPENSED)` indicates the item was already safely dispensed).
+4. **`NOT FOUND`**: Identifier does not exist in the database (unregistered or invalid QR code).
+
+> [!IMPORTANT]
+> **Database Verification Disclaimer**: A database record match confirms that an authentic serialized unit was registered in the MedLedger system. In accordance with pharmaceutical integrity guidelines, database verification does not cryptographically or physically guarantee that a physical package was not duplicated in the physical world without physical security seals.
+
+---
+
+## 5. Dual-Mode Database Architecture
+
+MedLedger features a resilient **Dual-Mode Engine** engineered to guarantee 100% functionality in both development and production Oracle installations:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   MedLedger Backend                    │
+│            (Node.js / Express Architecture)            │
+└───────────────────────────┬────────────────────────────┘
+                            │
+               ┌────────────┴────────────┐
+               ▼                         ▼
+   ┌───────────────────────┐ ┌───────────────────────┐
+   │      ORACLE MODE      │ │   SIMULATION MODE     │
+   │   (Live Oracle 21c)   │ │  (In-Memory Fallback) │
+   │                       │ │                       │
+   │ • Thin Mode (port 1521│ │ • Complete 13 tables  │
+   │ • Native SQL execution│ │ • Relational join algs│
+   │ • Live PL/SQL routines│ │ • Instant evaluation  │
+   └───────────────────────┘ └───────────────────────┘
+```
+
+1. **Live Oracle Mode**:
+   - Uses the official `oracledb` thin client connecting to Oracle XE or Oracle 21c.
+   - Executes the authoritative SQL scripts from `database/04_queries.sql`.
+   - Uses bind variables (`:ident`, `:param`) to prevent SQL injection.
+2. **Simulation Fallback Mode**:
+   - When the Oracle listener on port 1521 is unreachable (`ECONNREFUSED`), the backend automatically activates the in-memory simulation engine.
+   - Seeded with the exact synthetic dataset from `database/04_insert_data.sql` (16 Parties, 12 Drugs, 18 Batches, 33 Packages, 16 Shipments, 4 Recalls, 12 Dispensings).
+   - Implements full relational query logic matching Oracle results row-for-row.
+   - **Transparency**: Clearly displayed in `/api/health`, on the Analytics page, and in the SQL Demo panel.
+
+---
+
+## 6. SQL Scripts & Database Execution Order
+
+Authoritative SQL scripts located in `database/`:
 
 ```
 database/
-├── 00_run_all.sql         # Master batch execution runner
+├── 00_run_all.sql         # Master batch execution runner (SQL*Plus)
 ├── 01_drop_tables.sql     # Safe dependency-cascade drop sequence
 ├── 02_create_tables.sql   # DDL for all 13 tables & sequences
 ├── 03_constraints.sql     # Foreign keys, uniqueness, & check constraints
 ├── 04_insert_data.sql     # Realistic synthetic pharmaceutical dataset
-├── 05_queries.sql         # 12 Advanced analytical SQL queries (Q1–Q12)
-├── 06_plsql.sql           # Procedures, functions, triggers, & packages
-└── 07_demo.sql            # Interactive test demonstration script
+├── 04_queries.sql         # The 15 Oracle SQL Queries (Primary authoritative file)
+├── 05_queries.sql         # Reference query catalogue
+├── 06_plsql.sql           # Stored procedures, functions, triggers, & packages
+├── 07_demo.sql            # Interactive test demonstration script
+└── setup_db.js            # Node-based automated runner
 ```
 
-### Execution Order in SQL\*Plus / SQL Developer:
+### Running in Oracle SQL Developer / SQL\*Plus:
 
 ```sql
--- Connect as your medledger user or system
+-- Connect to Oracle instance
 CONN medledger/medledger_pass@localhost:1521/XEPDB1;
 
--- Run all scripts automatically:
+-- Run entire script sequence:
 @database/00_run_all.sql;
+
+-- Or run queries individually:
+@database/04_queries.sql;
 ```
 
 ---
 
-## 5. SQL Query Catalogue (Q1 to Q12)
+## 7. Backend API Reference
 
-Every query demonstrates fundamental and advanced DBMS concepts:
+### Analytics Endpoints (`/api/analytics`)
 
-| ID | Title | DBMS Concept | Objective |
+| Method | Endpoint | Query ID | Description |
 |---|---|---|---|
-| **Q1** | Drugs with Manufactured Batches | 3-Table `INNER JOIN`, `ORDER BY` | Identifies lot numbers and manufacture dates for every formulated drug. |
-| **Q2** | Manufacturer-wise Batch Summary | `INNER JOIN`, `GROUP BY`, Aggregates (`COUNT`, `MAX`, `MIN`) | Regulatory oversight on manufacturer batch volumes and release status. |
-| **Q3** | Packages Currently in Transit | 5-Table Join, Complex Predicate Filtering | Real-time visibility into custody and physical location of transit cargo. |
-| **Q4** | Custody Shipments with Resolved Names | Dual joins on the same superclass table (`PARTY`) with aliases | Resolves origin and destination without exposing surrogate IDs. |
-| **Q5** | Quality Test Audit for Specific Batches | Parameterized Lookup, `JOIN`, In-list filter | Audits HPLC assay, sterility, and dissolution profiles for specific lots. |
-| **Q6** | Recalled Batches and Affected Formulations | 4-Table Join, Temporal & Status Filtering | Rapid recall visibility for regulatory inspectors. |
-| **Q7** | Pharmacies Actively Dispensing | Subquery with `EXISTS` clause, Distinct Extraction | Differentiates active dispensing centers from idle retail nodes. |
-| **Q8** | Multi-hop Packages (Shipped > 1 Time) | Bridge table aggregation, `GROUP BY`, `HAVING COUNT(*) > 1` | Detects multi-leg logistics transfer through intermediary distributors. |
-| **Q9** | Drugs with Failed Quality Tests | Correlated Subquery / `IN` clause, Aggregation | Identifies high-risk chemical formulations requiring investigation. |
-| **Q10** | Cargo Manifest Package Count per Shipment | `LEFT OUTER JOIN`, `GROUP BY`, Aggregate `COUNT` | Manifest package verification for freight haulers. |
-| **Q11** | Most Frequently Dispensed Drugs | 4-Table Join, `GROUP BY`, `SUM` Aggregate, `ORDER BY DESC` | High-turnover drug consumption analytics for hospital demand planning. |
-| **Q12** | Serialized Packages Affected by Recall | Hierarchical Multi-Table Join (`RECALL → BATCH → PACKAGE`) | Instant quarantine list of serialized QR codes across the network. |
+| `GET` | `/api/analytics` | Metadata | Returns catalogue metadata of all 15 queries with SQL text |
+| `GET` | `/api/analytics/drug-catalogue` | Q1 | Formulations, dosage forms, strengths |
+| `GET` | `/api/analytics/batch-traceability` | Q2 | Batches with drug, manufacturer, and status |
+| `GET` | `/api/analytics/package-inventory` | Q3 | Serialized packages and lifecycle states |
+| `GET` | `/api/analytics/shipment-tracking` | Q4 | Custody transfers with resolved sender/receiver |
+| `GET` | `/api/analytics/in-transit-shipments` | Q5 | Shipments currently in transit |
+| `GET` | `/api/analytics/failed-quality-tests` | Q6 | Laboratory assays that failed quality standards |
+| `GET` | `/api/analytics/active-recalls` | Q7 | Active product recalls with affected formulations |
+| `GET` | `/api/analytics/recall-impact` | Q8 | Serialized packages quarantined under active recalls |
+| `GET` | `/api/analytics/manufacturer-performance` | Q9 | Batch manufacturing volume by licensed producer |
+| `GET` | `/api/analytics/pharmacy-dispensing` | Q10 | Dispensed quantities aggregated by pharmacy |
+| `GET` | `/api/analytics/top-drugs` | Q11 | Ranking drugs by manufacturing batch frequency |
+| `GET` | `/api/analytics/undispensed-packages` | Q12 | Packages remaining un-dispensed in supply chain |
+| `GET` | `/api/analytics/package-shipment-history/:packageId` | Q13 | Chronological transit history for a specific package/QR |
+| `GET` | `/api/analytics/pending-quality-tests` | Q14 | Lab assays requiring review or marked failed |
+| `GET` | `/api/analytics/verify-package?identifier=...` | Q15 | Comprehensive 360-degree verification audit |
+| `GET` | `/api/analytics/:queryId` | Q1–Q15 | Dynamic runner endpoint with query parameters |
+
+### Core CRUD & Verification Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Health status and active database engine mode |
+| `GET` | `/api/dashboard` | Aggregated supply chain KPIs and recent activities |
+| `GET` | `/api/packages/verify/:identifier` | Core anti-counterfeit verification route with verdict |
+| `GET`/`POST` | `/api/drugs` | Drug catalogue CRUD |
+| `GET`/`POST` | `/api/batches` | Batch registry CRUD (calls `register_batch`) |
+| `GET`/`POST` | `/api/packages` | Serialized package inventory CRUD |
+| `GET`/`POST` | `/api/shipments` | Custody shipment dispatch and tracking |
+| `GET`/`POST` | `/api/recalls` | Regulatory recall notice management |
+| `GET`/`POST` | `/api/dispensings` | Patient counter dispensing records |
 
 ---
 
-## 6. PL/SQL Database Programming
-
-### 1. `PROCEDURE register_batch`
-Safely registers a manufactured batch after validating that both the manufacturer and the drug formulation exist in the system.
-```sql
-register_batch(
-    p_drug_id          => 101,
-    p_manufacturer_id  => 1,
-    p_manufacture_date => SYSDATE,
-    p_batch_status     => 'RELEASED',
-    p_new_batch_id     => v_new_id
-);
-```
-
-### 2. `PROCEDURE process_recall`
-Propagates a regulatory recall notice across the entire supply chain: updates affected `BATCH` records to `RECALLED` and flags all associated `PACKAGE` units as `RECALLED` to prevent retail dispensing.
-```sql
-process_recall(p_recall_id => 501);
-```
-
-### 3. `FUNCTION verify_package`
-Core Anti-Counterfeit Verification logic. Accepts either a `package_id` or `qr_code`. Evaluates package state, batch quarantine status, and lab test failures to return:
-`AUTHENTIC`, `RECALLED`, `TAMPERED`, `FAILED_TEST`, or `INVALID`.
-```sql
-SELECT verify_package('QR-MED-208-01-G1') FROM dual;
-```
-
-### 4. `FUNCTION recall_impact`
-Computes the blast radius of a recall notice (total batches affected, total quarantined packages, and total unit quantity).
-```sql
-SELECT recall_impact(501) FROM dual;
-```
-
-### 5. `TRIGGER trg_check_package_qty`
-Enforces the domain constraint that package `quantity_total` must be strictly positive before INSERT or UPDATE.
-
-### 6. `TRIGGER trg_batch_recall_cascade`
-Automatically cascades recall status to all related packages whenever a batch's status transitions to `RECALLED`.
-
----
-
-## 7. Technology Stack
-
-- **Relational DBMS**: Oracle Database 21c Express Edition (Oracle XE) / Oracle Autonomous DB
-- **Backend**: Node.js v24+, Express v4.21, `oracledb` v6.10 (Thin Mode, connection pooling)
-- **Frontend**: React 19, Vite 8, Tailwind CSS 3.4, Lucide React
-- **Design System**: Forest-green & clinical white healthcare identity (`#14532d`, `#166534`, `#f0fdf4`)
-
----
-
-## 8. Installation & Setup Guide
+## 8. Installation & Startup Instructions
 
 ### Prerequisites
-- Node.js v18+ and npm installed
-- (Optional for live DB) Oracle Database 21c XE installed and running on port 1521
+- Node.js v18 or higher
+- npm v9 or higher
+- Optional: Oracle Database 21c XE running on port 1521
 
-### Step 1: Clone Repository
-```bash
-git clone https://github.com/your-username/medledger.git
-cd medledger
+### Step 1: Environment Configuration
+Create or inspect `backend/.env`:
+```ini
+PORT=5000
+NODE_ENV=development
+
+# Oracle Database Configuration
+DB_USER=medledger
+DB_PASSWORD=medledger_pass
+DB_CONNECT_STRING=localhost:1521/XEPDB1
 ```
 
-### Step 2: Configure Oracle Database (If Running Local Oracle)
-In SQL\*Plus as `SYSDBA`:
-```sql
-ALTER SESSION SET CONTAINER = XEPDB1;
-CREATE USER medledger IDENTIFIED BY medledger_pass;
-GRANT CONNECT, RESOURCE, DBA TO medledger;
-GRANT UNLIMITED TABLESPACE TO medledger;
-```
-
-Then initialize the tables and data:
-```bash
-cd database
-node setup_db.js
-```
-*(Or execute `@database/00_run_all.sql` directly in Oracle SQL Developer).*
-
-### Step 3: Start the Backend Server
+### Step 2: Start Backend Server (Terminal 1)
 ```bash
 cd backend
 npm install
 node server.js
 ```
-*The backend starts at `http://localhost:5000`.*  
-*If Oracle is offline, the backend automatically enables the in-memory simulation engine seeded with the exact 13-table dataset!*
+*The server starts on `http://localhost:5000`.*  
+*Health Check API: `http://localhost:5000/api/health`*  
+*If Oracle is offline, the backend outputs a diagnostic notice and activates the in-memory fallback.*
 
-### Step 4: Start the Frontend Application
+### Step 3: Start Frontend Application (Terminal 2)
 ```bash
-cd ../frontend
-npm install --legacy-peer-deps
+cd frontend
+npm install
 npm run dev
 ```
-*The web interface starts at `http://localhost:5173`.*
+*The web client starts on `http://localhost:5173`.*
 
----
+> **Alternative (Single-command from project root)**:  
+> You can also launch either service directly from the root repository folder:  
+> `npm run dev` — Launches the frontend (`npm --prefix frontend run dev`)  
+> `npm run backend` — Launches the backend (`npm --prefix backend start`)
 
-## 9. REST API Reference
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/health` | Service and database engine status |
-| `GET` | `/api/dashboard` | Aggregated KPIs, distributions, and recent events |
-| `GET` | `/api/parties` | List parties (filterable by `?role=...`) |
-| `POST` | `/api/parties` | Create new Party & subclass relation |
-| `PUT` | `/api/parties/:id` | Update existing Party details |
-| `DELETE` | `/api/parties/:id` | Delete Party (cascades in DB) |
-| `GET` | `/api/drugs` | List drugs catalog (searchable by `?search=...`) |
-| `POST` | `/api/drugs` | Add new drug formulation |
-| `PUT` | `/api/drugs/:id` | Update drug details |
-| `DELETE` | `/api/drugs/:id` | Delete drug |
-| `GET` | `/api/batches` | List batches (filterable by `?status=...`) |
-| `POST` | `/api/batches` | Register batch via PL/SQL `register_batch` |
-| `GET` | `/api/packages` | List serialized units (search by `?qr=...`) |
-| `POST` | `/api/packages` | Serialize new package unit |
-| `GET` | `/api/packages/verify/:identifier` | Anti-counterfeit verification via PL/SQL `verify_package` |
-| `GET` | `/api/shipments` | List custody shipments with party names |
-| `POST` | `/api/shipments` | Dispatch shipment and map `CONTAINS` bridge |
-| `GET` | `/api/recalls` | List recall notices and impact summaries |
-| `POST` | `/api/recalls/:id/process` | Execute PL/SQL `process_recall` |
-| `GET` | `/api/recalls/:id/impact` | Call PL/SQL `recall_impact` |
-| `GET` | `/api/dispensings` | List retail counter dispensing events |
-| `POST` | `/api/dispensings` | Record patient dispensing event |
-| `GET` | `/api/analytics` | List 12 SQL queries in catalogue |
-| `GET` | `/api/analytics/:queryId` | Execute query (Q1–Q12) and return results |
-
----
-
-## 10. Demonstration Walkthrough (For University Review)
-
-1. **Dashboard (`/`)**: Show live metrics from Oracle (16 Parties, 12 Drugs, 18 Batches, 32 Packages, 16 Shipments, 4 Recalls).
-2. **Anti-Counterfeit Verification (`/verify`)**:
-   - Enter `QR-MED-208-01-G1`: Shows **AUTHENTIC** with Paxlovid lineage and manufacturer details.
-   - Enter `QR-MED-201-01-A1`: Shows **RECALLED** due to glass particulate contamination.
-   - Enter `QR-COUNTERFEIT-FAKE-999`: Shows **INVALID** anti-counterfeit alert.
-3. **PL/SQL Procedure Demonstration (`/batches` & `/recalls`)**:
-   - Register a new batch to invoke `register_batch` and observe OUT parameter generation.
-   - Trigger **Process Recall** on Recall #501 to demonstrate automated cascading updates to batches and packages.
-4. **SQL Analytics Engine (`/analytics`)**:
-   - Step through Queries **Q1 to Q12**, inspect the syntax explanation, click **Run Query**, and observe tabular output.
-5. **Frontend CRUD (`/drugs` or `/parties`)**:
-   - Perform an **INSERT** (Add Drug), **UPDATE** (Edit Drug), and **DELETE** (Delete Drug) to confirm live data synchronization.
-
----
-
-## 11. Project Directory Structure
-
+### Step 4: Run Automated Analytics & Verification Test Suite
+```bash
+cd backend
+node test_analytics.js
 ```
-MedLedger DBMS/
-├── backend/
-│   ├── config/
-│   │   └── db.js                 # Dual-mode OracleDB connection pool
-│   ├── controllers/              # RESTful API controllers
-│   ├── middleware/               # Global error handling
-│   ├── routes/                   # Modular Express routes
-│   ├── services/                 # Simulation service & fallback
-│   ├── .env.example              # Environment template
-│   ├── package.json
-│   └── server.js                 # Server entrypoint
-├── frontend/
-│   ├── src/
-│   │   ├── components/           # Sidebar, Navbar, Modal, Badges, Toast
-│   │   ├── pages/                # 11 Dedicated views
-│   │   ├── services/             # API HTTP client
-│   │   ├── App.jsx               # Application root
-│   │   ├── index.css             # Tailwind base & custom medical styles
-│   │   └── main.jsx
-│   ├── index.html
-│   ├── tailwind.config.js
-│   ├── vite.config.js
-│   └── package.json
-├── database/
-│   ├── 00_run_all.sql            # Master runner
-│   ├── 01_drop_tables.sql
-│   ├── 02_create_tables.sql
-│   ├── 03_constraints.sql
-│   ├── 04_insert_data.sql
-│   ├── 05_queries.sql            # Q1–Q12 Catalogue
-│   ├── 06_plsql.sql              # Stored procedures & triggers
-│   ├── 07_demo.sql               # Viva verification script
-│   └── setup_db.js               # Node-based Oracle runner
-├── .gitignore
-├── LICENSE
-└── README.md
-```
+*Executes all 28 automated assertions covering Q1–Q15, verification scenarios, and CRUD integrity.*
 
 ---
 
-## 12. Future Scope
+## 9. System Demonstration & Verification Walkthrough
 
-- **Layer 2 — Hyperledger Fabric Smart Contracts**: Deploy chaincode to anchor custody transfers into an immutable permissioned ledger.
-- **Layer 3 — Neo4j Provenance Graph**: Visualize high-dimension supply chain graph topologies and shortest-path trace analysis.
-- **IoT Cold-Chain Telemetry**: Ingest real-time temperature and GPS alerts directly via MQTT brokers.
+Follow these steps to demonstrate and verify the pharmaceutical supply chain platform:
+
+### Step 1: Supply Chain Analytics (`/analytics`)
+1. Navigate to **Supply Chain Analytics** via the sidebar.
+2. Observe the 6 category tabs:
+   - **Drug & Batch Intelligence** (Queries 1, 2, 11)
+   - **Package Tracking** (Queries 3, 12)
+   - **Shipment Analytics** (Queries 4, 5, 13)
+   - **Quality & Compliance** (Queries 6, 14)
+   - **Recall Management** (Queries 7, 8)
+   - **Manufacturer & Pharmacy Performance** (Queries 9, 10, 15)
+3. Click **Query 1: Drug Catalogue** -> Table displays all 12 drugs with dosage form and strength.
+4. Click **Query 8: Recall Impact Analysis** -> Shows all 6 packages quarantined under active recalls.
+5. Click **Query 13: Shipment History for a Package**:
+   - Use the Quick Sample button `QR-MED-208-01-G1`.
+   - Click **Run Query** -> Table displays custody hops from Pfizer to McKesson and Apollo.
+6. Open the **Oracle SQL Architecture & Query Inspector Panel** at the bottom:
+   - Inspect the Oracle SQL syntax for the active query.
+   - Click **Copy Oracle SQL** to copy code for SQL Developer testing.
+   - Expand the full 15-query catalog to review all SQL statements.
+
+### Step 2: Package Verification (`/verify`)
+1. Navigate to **Verify Package** via the sidebar.
+2. Observe the prominent **Database Verification Disclaimer**.
+3. **Scenario A — Legitimate Package**:
+   - Enter `QR-MED-208-01-G1` and click **VERIFY PACKAGE**.
+   - Result: Green badge `VERIFIED (DISPENSED)` with full lineage (Paxlovid, Pfizer, McKesson shipment).
+4. **Scenario B — Quarantined Lot (Recall Alert)**:
+   - Enter `QR-MED-201-01-A1` and click **VERIFY PACKAGE**.
+   - Result: Red banner `RECALL ALERT: Associated batch is under an active regulatory recall (Microscopic glass particulate delamination)`.
+5. **Scenario C — Quality Failure (Quality Warning)**:
+   - Enter `QR-MED-209-01-N1` and click **VERIFY PACKAGE**.
+   - Result: Amber banner `QUALITY WARNING: Associated batch failed 1 laboratory quality assurance test(s) (Thermal Stability Audit)`.
+6. **Scenario D — Counterfeit / Unregistered**:
+   - Enter `QR-COUNTERFEIT-FAKE-999` and click **VERIFY PACKAGE**.
+   - Result: `NOT FOUND: No matching serialized package record found`.
+
+### Step 3: CRUD Regression Verification
+1. Navigate to **Drugs Catalog** (`/drugs`) -> Click **Add Drug**, enter new formulation, and verify it updates table.
+2. Navigate to **Batches** (`/batches`) -> View existing batches and register a new batch.
+3. Confirm dashboard KPIs at `/` accurately reflect all entities.
 
 ---
 
-## 13. License
+## 10. Status & Limitations
+
+### Implemented & Tested in Phase 3
+- [x] 15 Oracle SQL Queries adhering to exact MedLedger BCNF schema.
+- [x] Backend Express routes for all 15 queries with parameterized bind safety.
+- [x] Full Anti-Counterfeit Verification engine with 4-tier priority verdicts.
+- [x] Responsive React Analytics interface with 6 category tabs, search filters, and badges.
+- [x] Oracle SQL Architecture & Query Inspector Panel with live code inspection and SQL copy.
+- [x] Dual-Mode architecture with automatic fallback and transparent mode reporting.
+- [x] Automated test suite with 28 passing assertions (`test_analytics.js`).
+- [x] Production Vite build with zero compile errors.
+
+### Current Environmental Limitations
+- **Local Oracle DB Status**: When Oracle Database 21c/XE listener is not running locally on port 1521, the backend operates in **Simulation Storage Mode**. The simulation engine maintains the exact 13-table schema in memory, executing identical relational joins and aggregations.
+- **Physical vs Database Verification**: As documented in the verification interface, database record verification confirms provenance records in MedLedger, but cannot cryptographically prevent physical container cloning without physical anti-tamper seals.
+
+### Planned for Future Phases (Out of Scope for Phase 3)
+- Hyperledger Fabric smart contract chaincode (Layer 2).
+- Neo4j graph database provenance visualization (Layer 3).
+- IoT cold-chain temperature telemetry streaming via MQTT.
+
+---
+
+## 11. License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SCRIPT: 03_constraints.sql
--- PROJECT: MedLedger DBMS - University DA2 Project
+-- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: Define all Foreign Keys, CHECK constraints, and Domain validations.
 -- COMPATIBILITY: Oracle 21c / Oracle XE / Oracle SQL Developer
 -- ============================================================================

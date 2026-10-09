@@ -1,5 +1,5 @@
 -- ============================================================================
--- SCRIPT: 05_queries.sql
+-- SCRIPT: 04_queries.sql (also mirrored in 05_queries.sql)
 -- PROJECT: MedLedger — Pharmaceutical Supply Chain Intelligence
 -- PURPOSE: 15 Core Oracle SQL Analytics Queries
 --          Showcases Multi-table Joins, Aggregations, GROUP BY, HAVING,

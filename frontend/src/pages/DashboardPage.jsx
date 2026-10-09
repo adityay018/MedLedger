@@ -131,9 +131,9 @@ export default function DashboardPage({ onNavigate }) {
               <Activity className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">MedLedger Operations Dashboard</h1>
+              <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight">Pharmaceutical Supply Chain Intelligence</h1>
               <p className="text-xs text-[#64748B]">
-                Live Oracle DBMS supply chain telemetry • Real-time relational tracking from manufacture to point-of-care
+                Traceability, Quality & Compliance • Real-time relational tracking from manufacture to point-of-care
               </p>
             </div>
           </div>

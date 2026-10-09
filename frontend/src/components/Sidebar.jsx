@@ -23,7 +23,7 @@ export default function Sidebar({ currentTab, onSelectTab, dbMode }) {
     { id: 'quality-tests', label: 'Quality Tests', icon: FlaskConical },
     { id: 'recalls', label: 'Recalls', icon: AlertTriangle },
     { id: 'dispensing', label: 'Dispensing', icon: Receipt },
-    { id: 'analytics', label: 'Analytics', icon: Database, badge: '12 Qs' },
+    { id: 'analytics', label: 'Analytics', icon: Database, badge: '15 Qs' },
     { id: 'verify', label: 'Package Verification', icon: ShieldCheck, highlight: true },
     { id: 'parties', label: 'Parties', icon: Users },
   ];
@@ -39,9 +39,9 @@ export default function Sidebar({ currentTab, onSelectTab, dbMode }) {
         <div>
           <div className="flex items-center gap-1.5">
             <h1 className="font-bold text-lg text-slate-900 tracking-tight">MedLedger</h1>
-            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-forest-100 text-forest-800">DA2</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-forest-100 text-forest-800">v1.0</span>
           </div>
-          <p className="text-[11px] text-slate-500 font-medium leading-tight">Supply Chain DBMS</p>
+          <p className="text-[11px] text-slate-500 font-medium leading-tight">Supply Chain Intelligence</p>
         </div>
       </div>
 

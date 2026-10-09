@@ -169,13 +169,6 @@ exports.verifyPackage = async (req, res, next) => {
       const funcRes = await db.execute(funcSql, { ident: identifier.trim() });
       const verdictText = funcRes.rows[0]?.VERDICT_TEXT || 'UNKNOWN';
 
-      let verdict = 'AUTHENTIC';
-      if (verdictText.startsWith('INVALID')) verdict = 'INVALID';
-      else if (verdictText.startsWith('RECALLED')) verdict = 'RECALLED';
-      else if (verdictText.startsWith('TAMPERED')) verdict = 'TAMPERED';
-      else if (verdictText.startsWith('FAILED_TEST')) verdict = 'FAILED_TEST';
-      else if (verdictText.includes('DISPENSED')) verdict = 'AUTHENTIC (DISPENSED)';
-
       // Fetch package details for the lineage report
       const detailSql = `
         SELECT p.package_id, p.qr_code, p.package_size, p.status, p.quantity_total,
@@ -183,22 +176,108 @@ exports.verifyPackage = async (req, res, next) => {
                b.batch_id, b.batch_status, TO_CHAR(b.manufacture_date, 'YYYY-MM-DD') AS manufacture_date,
                d.drug_name, d.strength, d.dosage_form,
                mfg_p.party_name AS manufacturer_name,
-               r.recall_id, r.reason AS recall_reason, TO_CHAR(r.recall_date, 'YYYY-MM-DD') AS recall_date
+               r.recall_id, r.status AS recall_status, r.reason AS recall_reason, TO_CHAR(r.recall_date, 'YYYY-MM-DD') AS recall_date,
+               disp.dispense_id, disp.patient_id, disp_p.party_name AS dispensing_pharmacy, TO_CHAR(disp.dispensed_at, 'YYYY-MM-DD') AS dispensed_at,
+               (SELECT COUNT(*) FROM QUALITY_TEST qt WHERE qt.batch_id = b.batch_id) AS total_quality_tests,
+               (SELECT COUNT(*) FROM QUALITY_TEST qt WHERE qt.batch_id = b.batch_id AND qt.status = 'PASSED') AS passed_quality_tests,
+               (SELECT COUNT(*) FROM QUALITY_TEST qt WHERE qt.batch_id = b.batch_id AND qt.status = 'FAILED') AS failed_quality_tests,
+               (SELECT COUNT(*) FROM QUALITY_TEST qt WHERE qt.batch_id = b.batch_id AND qt.status = 'PENDING') AS pending_quality_tests
         FROM PACKAGE p
         INNER JOIN BATCH b ON p.batch_id = b.batch_id
         INNER JOIN DRUG d ON b.drug_id = d.drug_id
         INNER JOIN PARTY mfg_p ON b.manufacturer_id = mfg_p.party_id
         LEFT JOIN RECALL r ON b.recall_id = r.recall_id
+        LEFT JOIN DISPENSING disp ON p.dispense_id = disp.dispense_id
+        LEFT JOIN PARTY disp_p ON disp.pharmacy_id = disp_p.party_id
         WHERE p.qr_code = :ident OR (REGEXP_LIKE(:ident, '^[0-9]+$') AND p.package_id = TO_NUMBER(:ident))
       `;
       const detailRes = await db.execute(detailSql, { ident: identifier.trim() });
       const pkgRow = detailRes.rows[0] || null;
 
+      if (!pkgRow) {
+        return res.json({
+          success: true,
+          verdict: 'NOT FOUND',
+          statusText: 'NOT FOUND: No matching serialized package record found in MedLedger database.',
+          package: null
+        });
+      }
+
+      // Fetch shipment history for this package
+      const shipSql = `
+        SELECT s.shipment_id, TO_CHAR(s.shipment_date, 'YYYY-MM-DD') AS shipment_date,
+               sender.party_name AS sender_name, receiver.party_name AS receiver_name,
+               s.mode AS transport_mode, s.status
+        FROM CONTAINS c
+        INNER JOIN SHIPMENT s ON c.shipment_id = s.shipment_id
+        INNER JOIN PARTY sender ON s.sender_party_id = sender.party_id
+        INNER JOIN PARTY receiver ON s.receiver_party_id = receiver.party_id
+        WHERE c.package_id = :pkgId
+        ORDER BY s.shipment_date DESC
+      `;
+      const shipRes = await db.execute(shipSql, { pkgId: pkgRow.PACKAGE_ID });
+
+      let verdict = 'VERIFIED';
+      let statusText = 'VERIFIED: Database-backed record found and verified with no active recall or quality failure.';
+
+      const hasActiveRecall = (pkgRow.RECALL_ID && pkgRow.RECALL_STATUS === 'ACTIVE') || (pkgRow.BATCH_STATUS === 'RECALLED' && (!pkgRow.RECALL_STATUS || pkgRow.RECALL_STATUS === 'ACTIVE')) || pkgRow.STATUS === 'RECALLED';
+
+      if (hasActiveRecall) {
+        verdict = 'RECALL ALERT';
+        statusText = `RECALL ALERT: Associated batch is under an active regulatory recall (${pkgRow.RECALL_REASON || 'Batch quarantined'}).`;
+      } else if (pkgRow.FAILED_QUALITY_TESTS > 0) {
+        verdict = 'QUALITY WARNING';
+        statusText = `QUALITY WARNING: Associated batch failed ${pkgRow.FAILED_QUALITY_TESTS} laboratory quality assurance test(s).`;
+      } else if (pkgRow.STATUS === 'TAMPERED') {
+        verdict = 'QUALITY WARNING';
+        statusText = 'QUALITY WARNING: Physical package custody marked as TAMPERED.';
+      } else if (pkgRow.STATUS === 'DISPENSED' || pkgRow.DISPENSE_ID) {
+        verdict = 'VERIFIED (DISPENSED)';
+        statusText = 'VERIFIED: Legitimate pharmaceutical product already dispensed to patient.';
+      } else if (pkgRow.STATUS === 'IN_TRANSIT') {
+        verdict = 'VERIFIED (IN TRANSIT)';
+        statusText = 'VERIFIED: Authentic pharmaceutical record verified. Product is in transit.';
+      }
+
+      const qualityStatusSummary = pkgRow.FAILED_QUALITY_TESTS > 0
+        ? `FAILED (${pkgRow.FAILED_QUALITY_TESTS} failure(s))`
+        : pkgRow.PENDING_QUALITY_TESTS > 0
+        ? `PENDING (${pkgRow.PENDING_QUALITY_TESTS} pending)`
+        : pkgRow.PASSED_QUALITY_TESTS > 0
+        ? `PASSED (${pkgRow.PASSED_QUALITY_TESTS} cleared)`
+        : 'NO TESTS RECORDED';
+
+      const enrichedPkg = {
+        package_id: pkgRow.PACKAGE_ID,
+        qr_code: pkgRow.QR_CODE,
+        package_size: pkgRow.PACKAGE_SIZE,
+        status: pkgRow.STATUS,
+        quantity_total: pkgRow.QUANTITY_TOTAL,
+        packaged_at: pkgRow.PACKAGED_AT,
+        batch_id: pkgRow.BATCH_ID,
+        batch_status: pkgRow.BATCH_STATUS,
+        manufacture_date: pkgRow.MANUFACTURE_DATE,
+        drug_name: pkgRow.DRUG_NAME,
+        strength: pkgRow.STRENGTH,
+        dosage_form: pkgRow.DOSAGE_FORM,
+        manufacturer_name: pkgRow.MANUFACTURER_NAME,
+        quality_test_status: qualityStatusSummary,
+        recall_status: pkgRow.RECALL_ID ? 'ACTIVE RECALL' : 'NO ACTIVE RECALL',
+        recall_notice: pkgRow.RECALL_ID ? { recall_id: pkgRow.RECALL_ID, reason: pkgRow.RECALL_REASON, recall_date: pkgRow.RECALL_DATE } : null,
+        dispensing_info: pkgRow.DISPENSE_ID ? {
+          dispense_id: pkgRow.DISPENSE_ID,
+          dispensed_at: pkgRow.DISPENSED_AT,
+          patient_id: pkgRow.PATIENT_ID,
+          pharmacy_name: pkgRow.DISPENSING_PHARMACY
+        } : null,
+        shipment_history: shipRes.rows || []
+      };
+
       return res.json({
         success: true,
         verdict,
-        statusText: verdictText,
-        package: pkgRow
+        statusText,
+        package: enrichedPkg
       });
     } else {
       const result = db.mock.verifyPackage(identifier);

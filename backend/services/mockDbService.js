@@ -1,6 +1,7 @@
 // MedLedger Simulation Database Service
 // Mirrors all 13 Oracle relations, PL/SQL functions, procedures, and queries Q1-Q12
 const initialData = require('../db/initialData');
+const analyticsService = require('./analyticsService');
 
 // In-memory clone of initial state
 let parties = JSON.parse(JSON.stringify(initialData.parties));
@@ -224,7 +225,17 @@ const mockDbService = {
       throw err;
     }
 
-    const nextId = Math.max(...batches.map(b => b.batch_id), 200) + 1;
+    // Check for duplicate ID if manual ID was passed
+    if (data.batch_id) {
+      const dup = batches.some(b => b.batch_id === Number(data.batch_id));
+      if (dup) {
+        const err = new Error(`Duplicate Batch ID: Batch with ID ${data.batch_id} already exists.`);
+        err.code = -20006;
+        throw err;
+      }
+    }
+
+    const nextId = data.batch_id ? Number(data.batch_id) : (Math.max(...batches.map(b => b.batch_id), 200) + 1);
     const newBatch = {
       batch_id: nextId,
       drug_id: drugId,
@@ -380,6 +391,22 @@ const mockDbService = {
     const numId = Number(id);
     const idx = packages.findIndex(p => p.package_id === numId);
     if (idx === -1) return null;
+
+    const oldStatus = packages[idx].status;
+    const newStatus = data.status || oldStatus;
+
+    // Trigger simulation: trg_package_state_transition
+    if (newStatus === 'DISPENSED' && oldStatus === 'RECALLED') {
+      const err = new Error('Safety Violation: Cannot dispense a RECALLED package unit. Quarantined for patient safety.');
+      err.code = -20020;
+      throw err;
+    }
+    if (oldStatus === 'DISPENSED' && ['PACKAGED', 'IN_TRANSIT'].includes(newStatus)) {
+      const err = new Error('Lifecycle Violation: Dispensed package cannot re-enter active supply chain distribution.');
+      err.code = -20021;
+      throw err;
+    }
+
     packages[idx] = { ...packages[idx], ...data, package_id: numId };
     return mockDbService.getPackageById(numId);
   },
@@ -402,8 +429,8 @@ const mockDbService = {
   verifyPackage: (identifier) => {
     if (!identifier) {
       return {
-        verdict: 'INVALID',
-        statusText: 'No package identifier or QR code provided',
+        verdict: 'NOT FOUND',
+        statusText: 'No package identifier or QR code provided for verification.',
         package: null
       };
     }
@@ -416,8 +443,8 @@ const mockDbService = {
 
     if (!pkg) {
       return {
-        verdict: 'INVALID',
-        statusText: 'INVALID: Package or QR Code does not exist in MedLedger',
+        verdict: 'NOT FOUND',
+        statusText: 'NOT FOUND: No matching serialized package or QR code exists in the MedLedger database.',
         package: null
       };
     }
@@ -426,24 +453,72 @@ const mockDbService = {
     const drug = batch ? drugs.find(d => d.drug_id === batch.drug_id) : null;
     const mfg = batch ? parties.find(p => p.party_id === batch.manufacturer_id) : null;
     const recall = batch && batch.recall_id ? recalls.find(r => r.recall_id === batch.recall_id) : null;
-    const failedTests = qualityTests.filter(qt => qt.batch_id === pkg.batch_id && qt.status === 'FAILED');
+    const bQualityTests = batch ? qualityTests.filter(qt => qt.batch_id === batch.batch_id) : [];
+    const failedTests = bQualityTests.filter(qt => qt.status === 'FAILED');
+    const pendingTests = bQualityTests.filter(qt => qt.status === 'PENDING');
 
-    let verdict = 'AUTHENTIC';
-    let statusText = 'AUTHENTIC: Legitimate pharmaceutical product verified on MedLedger';
-
-    if (pkg.status === 'TAMPERED') {
-      verdict = 'TAMPERED';
-      statusText = 'TAMPERED: Security seal broken or chain-of-custody compromised';
-    } else if (pkg.status === 'RECALLED' || (batch && batch.batch_status === 'RECALLED') || recall) {
-      verdict = 'RECALLED';
-      statusText = `RECALLED: Product belongs to an active recall notice. Reason: ${recall?.reason || 'Batch quarantined'}`;
-    } else if (failedTests.length > 0) {
-      verdict = 'FAILED_TEST';
-      statusText = `FAILED_TEST: Associated batch failed ${failedTests.length} quality assurance test(s)`;
-    } else if (pkg.status === 'DISPENSED') {
-      verdict = 'AUTHENTIC (DISPENSED)';
-      statusText = 'AUTHENTIC (DISPENSED): Legitimate pharmaceutical product already dispensed to patient';
+    // Resolve dispensing info
+    let dispensingInfo = null;
+    if (pkg.dispense_id) {
+      const disp = dispensings.find(d => d.dispense_id === pkg.dispense_id);
+      if (disp) {
+        const ph = parties.find(p => p.party_id === disp.pharmacy_id);
+        dispensingInfo = {
+          dispense_id: disp.dispense_id,
+          dispensed_at: disp.dispensed_at,
+          patient_id: disp.patient_id,
+          quantity: disp.quantity,
+          pharmacy_name: ph?.party_name || 'Retail Pharmacy',
+          remarks: disp.remarks
+        };
+      }
     }
+
+    // Resolve shipment history
+    const relatedShipmentIds = contains.filter(c => c.package_id === pkg.package_id).map(c => c.shipment_id);
+    const shipmentHistory = shipments.filter(s => relatedShipmentIds.includes(s.shipment_id)).map(s => {
+      const sender = parties.find(p => p.party_id === s.sender_party_id);
+      const receiver = parties.find(p => p.party_id === s.receiver_party_id);
+      return {
+        shipment_id: s.shipment_id,
+        shipment_date: s.shipment_date,
+        sender_name: sender?.party_name || 'N/A',
+        receiver_name: receiver?.party_name || 'N/A',
+        transport_mode: s.mode,
+        status: s.status
+      };
+    }).sort((a, b) => b.shipment_date.localeCompare(a.shipment_date));
+
+    // Priority-based verdict determination
+    let verdict = 'VERIFIED';
+    let statusText = 'VERIFIED: Database-backed record found and verified with no active recall or quality failure.';
+
+    const hasActiveRecall = (recall && recall.status === 'ACTIVE') || (batch && batch.batch_status === 'RECALLED' && (!recall || recall.status === 'ACTIVE')) || pkg.status === 'RECALLED';
+
+    if (hasActiveRecall) {
+      verdict = 'RECALL ALERT';
+      statusText = `RECALL ALERT: Associated batch is under an active regulatory recall. Reason: ${recall?.reason || 'Batch quarantined for patient safety'}`;
+    } else if (failedTests.length > 0) {
+      verdict = 'QUALITY WARNING';
+      statusText = `QUALITY WARNING: Associated batch failed ${failedTests.length} laboratory quality assurance test(s). Product quarantined.`;
+    } else if (pkg.status === 'TAMPERED') {
+      verdict = 'QUALITY WARNING';
+      statusText = 'QUALITY WARNING: Security seal or physical custody reported as TAMPERED.';
+    } else if (pkg.status === 'DISPENSED' || dispensingInfo) {
+      verdict = 'VERIFIED (DISPENSED)';
+      statusText = 'VERIFIED: Authentic pharmaceutical record verified. Product has already been dispensed to a registered patient.';
+    } else if (pkg.status === 'IN_TRANSIT') {
+      verdict = 'VERIFIED (IN TRANSIT)';
+      statusText = 'VERIFIED: Authentic pharmaceutical record verified. Package is actively moving in authorized custody.';
+    }
+
+    const qualityStatusSummary = failedTests.length > 0 
+      ? `FAILED (${failedTests.length} test failure(s))` 
+      : pendingTests.length > 0 
+      ? `PENDING REVIEW (${pendingTests.length} pending)` 
+      : bQualityTests.length > 0 
+      ? `PASSED (${bQualityTests.length} test(s) cleared)` 
+      : 'NO TESTS RECORDED';
 
     return {
       verdict,
@@ -462,7 +537,12 @@ const mockDbService = {
         strength: drug?.strength,
         dosage_form: drug?.dosage_form,
         manufacturer_name: mfg?.party_name,
-        recall_notice: recall ? { recall_id: recall.recall_id, reason: recall.reason, recall_date: recall.recall_date } : null
+        quality_test_status: qualityStatusSummary,
+        quality_tests: bQualityTests,
+        recall_status: recall ? 'ACTIVE RECALL' : 'NO ACTIVE RECALL',
+        recall_notice: recall ? { recall_id: recall.recall_id, reason: recall.reason, recall_date: recall.recall_date } : null,
+        dispensing_info: dispensingInfo,
+        shipment_history: shipmentHistory
       }
     };
   },
@@ -500,18 +580,51 @@ const mockDbService = {
     };
   },
 
-  createShipment: (data) => {
-    if (Number(data.sender_party_id) === Number(data.receiver_party_id)) {
-      throw new Error('Sender and Receiver parties cannot be identical.');
+  // PL/SQL register_shipment implementation
+  registerShipment: (data) => {
+    const senderId = Number(data.sender_party_id);
+    const receiverId = Number(data.receiver_party_id);
+
+    if (!senderId || !receiverId) {
+      const err = new Error('Required Parties Missing: sender_party_id and receiver_party_id must be provided.');
+      err.code = -20010;
+      throw err;
     }
-    const nextId = Math.max(...shipments.map(s => s.shipment_id), 700) + 1;
+    if (senderId === receiverId) {
+      const err = new Error('Invalid Shipment: Sender and Receiver parties cannot be identical.');
+      err.code = -20011;
+      throw err;
+    }
+
+    const senderExists = parties.some(p => p.party_id === senderId);
+    if (!senderExists) {
+      const err = new Error('Invalid Sender: Party ID does not exist in PARTY table.');
+      err.code = -20012;
+      throw err;
+    }
+    const receiverExists = parties.some(p => p.party_id === receiverId);
+    if (!receiverExists) {
+      const err = new Error('Invalid Receiver: Party ID does not exist in PARTY table.');
+      err.code = -20013;
+      throw err;
+    }
+
+    const validModes = ['AIR_CARGO', 'COLD_CHAIN_TRUCK', 'EXPRESS_COURIER', 'MARITIME', 'ROAD_LOGISTICS'];
+    const mode = data.mode || 'ROAD_LOGISTICS';
+    if (!validModes.includes(mode)) {
+      const err = new Error('Invalid Mode: Transport mode not permitted by domain constraint.');
+      err.code = -20014;
+      throw err;
+    }
+
+    const nextId = Math.max(...shipments.map(s => s.shipment_id), 400) + 1;
     const newShipment = {
       shipment_id: nextId,
-      sender_party_id: Number(data.sender_party_id),
-      receiver_party_id: Number(data.receiver_party_id),
+      sender_party_id: senderId,
+      receiver_party_id: receiverId,
       shipment_date: data.shipment_date || new Date().toISOString().split('T')[0],
       status: data.status || 'CREATED',
-      mode: data.mode || 'ROAD_LOGISTICS'
+      mode
     };
     shipments.push(newShipment);
 
@@ -521,6 +634,10 @@ const mockDbService = {
       });
     }
     return mockDbService.getShipmentById(nextId);
+  },
+
+  createShipment: (data) => {
+    return mockDbService.registerShipment(data);
   },
 
   updateShipment: (id, data) => {
@@ -634,7 +751,7 @@ const mockDbService = {
     };
   },
 
-  // PL/SQL recall_impact function logic
+  // PL/SQL recall_impact / get_recall_impact function logic
   recallImpact: (recallId) => {
     const numId = Number(recallId);
     const affBatches = batches.filter(b => b.recall_id === numId);
@@ -643,6 +760,10 @@ const mockDbService = {
     const totalUnits = affPkgs.reduce((acc, p) => acc + (p.quantity_total || 0), 0);
 
     return `Batches Affected: ${affBatches.length} | Packages Quarantined: ${affPkgs.length} | Total Units: ${totalUnits}`;
+  },
+
+  getRecallImpact: (recallId) => {
+    return mockDbService.recallImpact(recallId);
   },
 
   // --------------------------------------------------------------------------
@@ -690,7 +811,22 @@ const mockDbService = {
   // --------------------------------------------------------------------------
   // SQL ANALYTICS (Executes Q1 to Q12)
   // --------------------------------------------------------------------------
-  runAnalyticsQuery: (queryId) => {
+  runAnalyticsQuery: (queryId, params = {}) => {
+    return analyticsService.executeSimulatedQuery(queryId, params, {
+      parties,
+      manufacturers,
+      distributors,
+      pharmacies,
+      regulators,
+      drugs,
+      batches,
+      qualityTests,
+      recalls,
+      packages,
+      shipments,
+      contains,
+      dispensings
+    });
     switch (queryId) {
       case 'Q1': {
         const rows = [];
