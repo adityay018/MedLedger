@@ -42,6 +42,8 @@ exports.getDrugById = async (req, res, next) => {
   }
 };
 
+const auditService = require('../services/auditService');
+
 exports.createDrug = async (req, res, next) => {
   try {
     const { drug_name, description, strength, dosage_form } = req.body;
@@ -49,17 +51,71 @@ exports.createDrug = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'drug_name, strength, and dosage_form are required' });
     }
 
+    const cleanName = drug_name.trim();
+    const cleanStrength = strength.trim();
+    const cleanDosage = dosage_form.trim();
+
     if (db.isUsingOracle()) {
+      // Check for duplicate in national catalogue
+      const checkSql = `
+        SELECT drug_id FROM DRUG 
+        WHERE LOWER(TRIM(drug_name)) = :name 
+          AND LOWER(TRIM(strength)) = :strength 
+          AND LOWER(TRIM(dosage_form)) = :dosage
+      `;
+      const dupCheck = await db.execute(checkSql, {
+        name: cleanName.toLowerCase(),
+        strength: cleanStrength.toLowerCase(),
+        dosage: cleanDosage.toLowerCase()
+      });
+      if (dupCheck.rows && dupCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Catalogue Conflict: A drug with name "${cleanName}", strength "${cleanStrength}", and dosage form "${cleanDosage}" already exists in the national catalogue.`
+        });
+      }
+
       const seqRes = await db.execute(`SELECT seq_drug_id.NEXTVAL AS id FROM dual`);
       const drugId = seqRes.rows[0].ID;
 
       await db.execute(
         `INSERT INTO DRUG (drug_id, drug_name, description, strength, dosage_form) VALUES (:id, :name, :desc, :strength, :dosage)`,
-        { id: drugId, name: drug_name, desc: description || null, strength, dosage: dosage_form }
+        { id: drugId, name: cleanName, desc: description || null, strength: cleanStrength, dosage: cleanDosage }
       );
-      return res.status(201).json({ success: true, message: 'Drug created successfully', data: { drug_id: drugId, ...req.body } });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'DRUG_REGISTERED',
+          entityType: 'DRUG',
+          entityId: drugId,
+          details: `Registered drug ${cleanName} (${cleanStrength}, ${cleanDosage})`,
+          req
+        });
+      }
+
+      return res.status(201).json({ success: true, message: 'Drug created successfully', data: { drug_id: drugId, drug_name: cleanName, description, strength: cleanStrength, dosage_form: cleanDosage } });
     } else {
-      const newDrug = db.mock.createDrug(req.body);
+      const newDrug = db.mock.createDrug({
+        drug_name: cleanName,
+        description,
+        strength: cleanStrength,
+        dosage_form: cleanDosage
+      });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'DRUG_REGISTERED',
+          entityType: 'DRUG',
+          entityId: newDrug.drug_id,
+          details: `Registered drug ${cleanName} (${cleanStrength}, ${cleanDosage})`,
+          req
+        });
+      }
+
       return res.status(201).json({ success: true, message: 'Drug created successfully', data: newDrug });
     }
   } catch (err) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import StatusBadge from '../components/StatusBadge';
 import { 
   Pill, 
@@ -16,10 +17,15 @@ import {
   XCircle,
   Activity,
   Calendar,
-  Building2
+  Building2,
+  UserCheck,
+  FileText,
+  PlusCircle,
+  ShieldAlert
 } from 'lucide-react';
 
 export default function DashboardPage({ onNavigate }) {
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -74,35 +80,97 @@ export default function DashboardPage({ onNavigate }) {
     recentRecalls = [] 
   } = stats || {};
 
-  // Exact 6 KPI cards requested in section 10
+  const role = user?.role || 'ADMINISTRATOR';
+
+  // Role metadata and quick actions
+  const roleConfig = {
+    ADMINISTRATOR: {
+      title: 'Enterprise Administration Console',
+      desc: 'System-wide governance, user account provisioning, role delegation, and audit surveillance.',
+      badgeStyle: 'bg-purple-100 text-purple-800 border-purple-200',
+      actions: [
+        { label: 'Review Pending Users', tab: 'users', icon: UserCheck, primary: true },
+        { label: 'System Audit Trail', tab: 'audit-logs', icon: FileText },
+        { label: 'Medicine Catalog', tab: 'drugs', icon: Pill },
+      ]
+    },
+    MANUFACTURER: {
+      title: 'Manufacturing & QA Operations Console',
+      desc: 'Formulation registration, batch lot production schedules, and analytical laboratory testing.',
+      badgeStyle: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      actions: [
+        { label: 'Create New Batch', tab: 'batches', icon: PlusCircle, primary: true },
+        { label: 'Submit QA Test', tab: 'quality-tests', icon: FlaskConical },
+        { label: 'Drug Catalog', tab: 'drugs', icon: Pill },
+      ]
+    },
+    DISTRIBUTOR: {
+      title: 'Logistics & Custody Transfer Console',
+      desc: 'In-transit custody tracking, cold-chain compliance, and verified shipment dispatch.',
+      badgeStyle: 'bg-blue-100 text-blue-800 border-blue-200',
+      actions: [
+        { label: 'Manage Shipments', tab: 'shipments', icon: Truck, primary: true },
+        { label: 'Verify Package QR', tab: 'verify', icon: ShieldCheck },
+        { label: 'Track Batches', tab: 'batches', icon: Layers },
+      ]
+    },
+    PHARMACY: {
+      title: 'Point-of-Care & Dispensary Console',
+      desc: 'Anti-counterfeit serialized package verification, inventory receipt, and patient dispensing.',
+      badgeStyle: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      actions: [
+        { label: 'Verify Package QR', tab: 'verify', icon: ShieldCheck, primary: true },
+        { label: 'Dispense Medicine', tab: 'dispensing', icon: CheckCircle2 },
+        { label: 'Inspect Recalls', tab: 'recalls', icon: AlertTriangle },
+      ]
+    },
+    REGULATOR: {
+      title: 'Regulatory & Public Safety Oversight Console',
+      desc: 'DSCSA serialization oversight, batch quality auditing, and safety recall enforcement.',
+      badgeStyle: 'bg-amber-100 text-amber-800 border-amber-200',
+      actions: [
+        { label: 'Review Safety Recalls', tab: 'recalls', icon: AlertTriangle, primary: true },
+        { label: 'Compliance Audit Trail', tab: 'audit-logs', icon: FileText },
+        { label: 'Supply Chain Analytics', tab: 'analytics', icon: Activity },
+      ]
+    }
+  };
+
+  const currentRoleConfig = roleConfig[role] || roleConfig.ADMINISTRATOR;
+
+  // Exact 6 KPI cards
   const mainCards = [
     {
       title: 'TOTAL DRUGS',
       value: kpi.drugsCount ?? 0,
       icon: Pill,
       tab: 'drugs',
-      description: 'Approved chemical formulations in catalog'
+      description: 'Approved chemical formulations in catalog',
+      visibleFor: ['ADMINISTRATOR', 'MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'REGULATOR']
     },
     {
       title: 'ACTIVE BATCHES',
       value: kpi.activeBatchesCount ?? 0,
       icon: Layers,
       tab: 'batches',
-      description: `Released lots (${kpi.batchesCount ?? 0} total created)`
+      description: `Released lots (${kpi.batchesCount ?? 0} total created)`,
+      visibleFor: ['ADMINISTRATOR', 'MANUFACTURER', 'DISTRIBUTOR', 'REGULATOR']
     },
     {
       title: 'PACKAGES',
       value: kpi.packagesCount ?? 0,
       icon: Package,
       tab: 'packages',
-      description: 'Serialized units with QR codes'
+      description: 'Serialized units with QR codes',
+      visibleFor: ['ADMINISTRATOR', 'MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'REGULATOR']
     },
     {
       title: 'SHIPMENTS',
       value: kpi.shipmentsCount ?? 0,
       icon: Truck,
       tab: 'shipments',
-      description: 'Custody transfer manifests'
+      description: 'Custody transfer manifests',
+      visibleFor: ['ADMINISTRATOR', 'MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'REGULATOR']
     },
     {
       title: 'ACTIVE RECALLS',
@@ -110,19 +178,23 @@ export default function DashboardPage({ onNavigate }) {
       icon: AlertTriangle,
       tab: 'recalls',
       description: `${kpi.recallsCount ?? 0} total regulatory safety orders`,
-      highlight: (kpi.activeRecallsCount || 0) > 0
+      highlight: (kpi.activeRecallsCount || 0) > 0,
+      visibleFor: ['ADMINISTRATOR', 'MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY', 'REGULATOR']
     },
     {
       title: 'DISPENSED PACKAGES',
       value: kpi.dispensedPackagesCount ?? 0,
       icon: CheckCircle2,
       tab: 'dispensing',
-      description: `Patient handovers (${kpi.dispensingsCount ?? 0} events)`
+      description: `Patient handovers (${kpi.dispensingsCount ?? 0} events)`,
+      visibleFor: ['ADMINISTRATOR', 'PHARMACY', 'REGULATOR']
     }
   ];
 
+  const visibleCards = mainCards.filter(c => c.visibleFor.includes(role));
+
   return (
-    <div className="p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="p-8 space-y-6 max-w-7xl mx-auto">
       {/* Title & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
@@ -149,9 +221,49 @@ export default function DashboardPage({ onNavigate }) {
         </div>
       </div>
 
-      {/* 6 Core KPI Cards Grid */}
+      {/* Role-Specific Cockpit Banner */}
+      <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border uppercase tracking-wider ${currentRoleConfig.badgeStyle}`}>
+              {role}
+            </span>
+            {user?.organizationName && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                {user.organizationName}
+              </span>
+            )}
+          </div>
+          <h2 className="text-base font-bold text-slate-900">{currentRoleConfig.title}</h2>
+          <p className="text-xs text-slate-500 max-w-xl">{currentRoleConfig.desc}</p>
+        </div>
+
+        {/* Quick Role Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {currentRoleConfig.actions.map((act, i) => {
+            const ActIcon = act.icon;
+            return (
+              <button
+                key={i}
+                onClick={() => onNavigate(act.tab)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs ${
+                  act.primary
+                    ? 'bg-forest-800 hover:bg-forest-900 text-white'
+                    : 'bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700'
+                }`}
+              >
+                <ActIcon className="w-3.5 h-3.5" />
+                <span>{act.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Role-Filtered KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {mainCards.map((card, idx) => {
+        {visibleCards.map((card, idx) => {
           const Icon = card.icon;
           return (
             <div 

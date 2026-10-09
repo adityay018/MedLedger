@@ -1,16 +1,22 @@
 const http = require('http');
+let authToken = null;
 
 function apiCall(method, path, body = null) {
   return new Promise((resolve, reject) => {
     const url = new URL(`http://localhost:5000/api${path}`);
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
     const options = {
       method,
       hostname: url.hostname,
       port: url.port,
       path: url.pathname + url.search,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers
     };
 
     const req = http.request(options, (res) => {
@@ -38,6 +44,15 @@ async function runTests() {
   console.log('================================================================');
   console.log(' STARTING END-TO-END CRUD AUTOMATED TEST SUITE');
   console.log('================================================================\n');
+
+  // Authenticate as Administrator for authorized operational tests
+  const loginRes = await apiCall('POST', '/auth/login', {
+    email: 'admin@medledger.io',
+    password: 'AdminPass123!'
+  });
+  if (loginRes.status === 200 && loginRes.body.token) {
+    authToken = loginRes.body.token;
+  }
 
   let passed = 0;
   let failed = 0;

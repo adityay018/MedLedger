@@ -1,32 +1,110 @@
 // MedLedger API Client
-const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
-  ? import.meta.env.VITE_API_URL 
-  : 'http://localhost:5000/api';
+function resolveApiBaseUrl() {
+  const envUrl = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    const trimmed = envUrl.trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+  }
+
+  // Local development fallback
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:5000/api';
+  }
+
+  // In production if VITE_API_URL is unset, default to relative /api
+  return '/api';
+}
+
+const API_BASE = resolveApiBaseUrl();
+
+// Auth token storage key
+const TOKEN_KEY = 'medledger_auth_token';
+
+export function getStoredToken() {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token) {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
+  const token = getStoredToken();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers
-    },
-    ...options
+    ...options,
+    headers
   };
 
   try {
     const response = await fetch(url, config);
     const data = await response.json();
+
     if (!response.ok) {
-      throw new Error(data.error || `Request failed with status ${response.status}`);
+      // Create enhanced error with status code and server error details
+      const error = new Error(data.error || `Request failed with status ${response.status}`);
+      error.status = response.status;
+      error.code = data.code;
+      error.data = data;
+      throw error;
     }
     return data;
   } catch (error) {
     console.error(`API Error on [${endpoint}]:`, error);
+
+    // Provide actionable messaging for network/fetch errors
+    if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+      const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      if (!isLocal && !import.meta.env?.VITE_API_URL) {
+        throw new Error(
+          'Backend service unreachable. In Netlify Site Configuration (Environment Variables), set VITE_API_URL to your deployed MedLedger backend API URL (e.g. https://medledger-backend-wasd.onrender.com/api).'
+        );
+      } else {
+        throw new Error(`Unable to connect to MedLedger API at ${API_BASE}. Ensure backend server is running and accessible.`);
+      }
+    }
     throw error;
   }
 }
 
 export const api = {
+  // Authentication & Session
+  login: (credentials) => request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
+  register: (formData) => request('/auth/register', { method: 'POST', body: JSON.stringify(formData) }),
+  getMe: () => request('/auth/me'),
+  logout: () => request('/auth/logout', { method: 'POST' }),
+
+  // Administration & User Approvals
+  getUsers: (params = {}) => {
+    const qStr = new URLSearchParams(params).toString();
+    return request(`/admin/users${qStr ? `?${qStr}` : ''}`);
+  },
+  getPendingRegistrations: () => request('/admin/pending-registrations'),
+  approveUser: (id, data) => request(`/admin/users/${id}/approve`, { method: 'POST', body: JSON.stringify(data) }),
+  rejectUser: (id) => request(`/admin/users/${id}/reject`, { method: 'POST' }),
+  updateUserStatus: (id, status) => request(`/admin/users/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  updateUserRole: (id, data) => request(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify(data) }),
+  getAuditLogs: (params = {}) => {
+    const qStr = new URLSearchParams(params).toString();
+    return request(`/admin/audit-logs${qStr ? `?${qStr}` : ''}`);
+  },
+
   // Health & Dashboard
   getHealth: () => request('/health'),
   getDashboard: () => request('/dashboard'),
@@ -86,7 +164,6 @@ export const api = {
   deleteRecall: (id) => request(`/recalls/${id}`, { method: 'DELETE' }),
   processRecall: (id) => request(`/recalls/${id}/process`, { method: 'POST' }),
   getRecallImpact: (id) => request(`/recalls/${id}/impact`),
-
 
   // Dispensing
   getDispensings: () => request('/dispensings'),

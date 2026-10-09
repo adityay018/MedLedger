@@ -5,12 +5,20 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "bootstrap:admin": "node scripts/bootstrapAdmin.js",
+    "test": "node test_auth.js && node test_crud.js && node test_analytics.js && node test_plsql.js",
+    "test:auth": "node test_auth.js",
+    "test:crud": "node test_crud.js",
+    "test:analytics": "node test_analytics.js",
+    "test:plsql": "node test_plsql.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
+    "express-rate-limit": "^8.7.1",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
     "oracledb": "^6.6.0"
   },

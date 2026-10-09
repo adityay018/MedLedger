@@ -213,5 +213,105 @@ module.exports = {
     { package_id: 429, shipment_id: 708 },
     { package_id: 430, shipment_id: 711 },
     { package_id: 432, shipment_id: 713 }
+  ],
+  users: [
+    {
+      user_id: 1,
+      name: 'Dr. Evelyn Reed (Chief Compliance Officer)',
+      email: 'admin@medledger.io',
+      password_hash: '$2b$10$mQq.QJn1ykVxBe8hSs8y1uBP2J1fwjW30ntKDbU4gHj2clWXsuBC6', // AdminPass123!
+      role: 'ADMINISTRATOR',
+      party_id: null,
+      status: 'APPROVED',
+      requested_role: 'ADMINISTRATOR',
+      requested_org_name: 'MedLedger Governance Authority',
+      created_at: '2026-01-01',
+      approved_at: '2026-01-01',
+      approved_by: 1
+    },
+    {
+      user_id: 2,
+      name: 'Pfizer Batch QA Lead',
+      email: 'pfizer@medledger.io',
+      password_hash: '$2b$10$VwA5eQxaACoc.7ELykpnNu31BLT0XyxgO0JgTgoW4r36jIbUQkeRq', // MfgPass123!
+      role: 'MANUFACTURER',
+      party_id: 1, // Pfizer Global Supply
+      status: 'APPROVED',
+      requested_role: 'MANUFACTURER',
+      requested_org_name: 'Pfizer Global Supply',
+      created_at: '2026-01-05',
+      approved_at: '2026-01-05',
+      approved_by: 1
+    },
+    {
+      user_id: 3,
+      name: 'AmerisourceBergen Logistics Dispatcher',
+      email: 'distributor@medledger.io',
+      password_hash: '$2b$10$DN.Bz8.CX7JAFn7DB93pt.LSWV3bQ8pOB3oUo0tRLEMsOp..S/IS2', // DistPass123!
+      role: 'DISTRIBUTOR',
+      party_id: 5, // AmerisourceBergen Logistics
+      status: 'APPROVED',
+      requested_role: 'DISTRIBUTOR',
+      requested_org_name: 'AmerisourceBergen Logistics',
+      created_at: '2026-01-08',
+      approved_at: '2026-01-08',
+      approved_by: 1
+    },
+    {
+      user_id: 4,
+      name: 'CVS Pharmacist-in-Charge',
+      email: 'pharmacy@medledger.io',
+      password_hash: '$2b$10$8MqwYCcODXheBY38pbRIhuK0llVGlNjoAi84n32yafRdXh6nUTLcW', // PharmPass123!
+      role: 'PHARMACY',
+      party_id: 9, // CVS Health Pharmacy #104
+      status: 'APPROVED',
+      requested_role: 'PHARMACY',
+      requested_org_name: 'CVS Health Pharmacy #104',
+      created_at: '2026-01-10',
+      approved_at: '2026-01-10',
+      approved_by: 1
+    },
+    {
+      user_id: 5,
+      name: 'FDA Senior Inspector',
+      email: 'regulator@medledger.io',
+      password_hash: '$2b$10$t2.lJCy9iw3gGWlUf7KQkOkDIB15FvJ.vXcm3oX6jGhotXFgX59AK', // RegPass123!
+      role: 'REGULATOR',
+      party_id: 14, // US FDA
+      status: 'APPROVED',
+      requested_role: 'REGULATOR',
+      requested_org_name: 'US Food & Drug Administration (FDA)',
+      created_at: '2026-01-12',
+      approved_at: '2026-01-12',
+      approved_by: 1
+    },
+    {
+      user_id: 6,
+      name: 'Apex Biotech Operations',
+      email: 'pending@medledger.io',
+      password_hash: '$2b$10$RmWtdVfwGOopR5DP2W2LrOIJQmpFaBjqMvh6mHfZqVU6ohwQMWFFu', // PendingPass123!
+      role: 'PENDING',
+      party_id: null,
+      status: 'PENDING',
+      requested_role: 'MANUFACTURER',
+      requested_org_name: 'Apex Biotech Laboratories',
+      organization_details: 'Facility License: MFG-APEX-2026-9901 | Address: 400 Technology Sq, Cambridge, MA',
+      created_at: '2026-02-01',
+      approved_at: null,
+      approved_by: null
+    }
+  ],
+  auditLogs: [
+    {
+      log_id: 1,
+      user_id: 1,
+      user_email: 'admin@medledger.io',
+      action: 'SYSTEM_BOOTSTRAP',
+      entity_type: 'SYSTEM',
+      entity_id: 'INITIALIZATION',
+      details: 'MedLedger secure access control and audit trail activated with initial administrator bootstrap.',
+      ip_address: '127.0.0.1',
+      created_at: '2026-01-01 09:00:00'
+    }
   ]
 };

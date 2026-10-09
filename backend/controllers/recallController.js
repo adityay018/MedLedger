@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const auditService = require('../services/auditService');
 
 exports.getAllRecalls = async (req, res, next) => {
   try {
@@ -33,6 +34,26 @@ exports.createRecall = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Recall reason is required' });
     }
 
+    // Role check: if Manufacturer, ensure they only recall batches belonging to their organization
+    if (req.user && req.user.role === 'MANUFACTURER' && Array.isArray(batch_ids) && batch_ids.length > 0) {
+      const userPartyId = Number(req.user.partyId);
+      for (const bid of batch_ids) {
+        let b = null;
+        if (db.isUsingOracle()) {
+          const bRes = await db.execute(`SELECT manufacturer_id FROM BATCH WHERE batch_id = :bid`, { bid: Number(bid) });
+          if (bRes.rows && bRes.rows.length > 0) b = { manufacturer_id: bRes.rows[0].MANUFACTURER_ID };
+        } else {
+          b = db.mock.getBatchById(bid);
+        }
+        if (b && Number(b.manufacturer_id) !== userPartyId) {
+          return res.status(403).json({
+            success: false,
+            error: `Ownership Violation: You cannot recall Batch #${bid} because it belongs to another manufacturer.`
+          });
+        }
+      }
+    }
+
     if (db.isUsingOracle()) {
       const seqRes = await db.execute(`SELECT seq_recall_id.NEXTVAL AS id FROM dual`);
       const recallId = seqRes.rows[0].ID;
@@ -55,9 +76,34 @@ exports.createRecall = async (req, res, next) => {
         }
       }
 
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'RECALL_INITIATED',
+          entityType: 'RECALL',
+          entityId: recallId,
+          details: `Issued recall notice #${recallId}: "${reason}"`,
+          req
+        });
+      }
+
       return res.status(201).json({ success: true, message: 'Recall notice issued successfully', data: { recall_id: recallId, ...req.body } });
     } else {
       const newRecall = db.mock.createRecall(req.body);
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'RECALL_INITIATED',
+          entityType: 'RECALL',
+          entityId: newRecall.recall_id,
+          details: `Issued recall notice #${newRecall.recall_id}: "${reason}"`,
+          req
+        });
+      }
+
       return res.status(201).json({ success: true, message: 'Recall notice issued successfully', data: newRecall });
     }
   } catch (err) {
@@ -69,6 +115,7 @@ exports.createRecall = async (req, res, next) => {
 exports.processRecall = async (req, res, next) => {
   try {
     const { id } = req.params;
+
     if (db.isUsingOracle()) {
       const plsql = `
         BEGIN
@@ -76,12 +123,38 @@ exports.processRecall = async (req, res, next) => {
         END;
       `;
       await db.execute(plsql, { rid: Number(id) });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'RECALL_PROCESSED',
+          entityType: 'RECALL',
+          entityId: id,
+          details: `Executed PL/SQL process_recall procedure for Recall #${id}. Quarantine applied.`,
+          req
+        });
+      }
+
       return res.json({
         success: true,
         message: `Recall #${id} executed via PL/SQL procedure process_recall. Batches & Packages quarantined.`
       });
     } else {
       const result = db.mock.processRecall(id);
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'RECALL_PROCESSED',
+          entityType: 'RECALL',
+          entityId: id,
+          details: `Executed process_recall for Recall #${id}. ${result.message}`,
+          req
+        });
+      }
+
       return res.json({ success: true, ...result });
     }
   } catch (err) {
@@ -99,7 +172,7 @@ exports.getRecallImpact = async (req, res, next) => {
       const summary = result.rows[0]?.IMPACT_SUMMARY || 'No impact recorded';
       return res.json({ success: true, recall_id: Number(id), impact_summary: summary });
     } else {
-      const summary = db.mock.recallImpact(id);
+      const summary = db.mock.getRecallImpact(id);
       return res.json({ success: true, recall_id: Number(id), impact_summary: summary });
     }
   } catch (err) {
@@ -110,11 +183,11 @@ exports.getRecallImpact = async (req, res, next) => {
 exports.updateRecall = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { reason, status, recall_date } = req.body;
+    const { status, reason } = req.body;
     if (db.isUsingOracle()) {
       await db.execute(
-        `UPDATE RECALL SET reason = NVL(:reason, reason), status = NVL(:status, status), recall_date = NVL(TO_DATE(:rdate, 'YYYY-MM-DD'), recall_date) WHERE recall_id = :id`,
-        { id: Number(id), reason: reason || null, status: status || null, rdate: recall_date || null }
+        `UPDATE RECALL SET status = NVL(:status, status), reason = NVL(:reason, reason) WHERE recall_id = :id`,
+        { id: Number(id), status: status || null, reason: reason || null }
       );
       return res.json({ success: true, message: `Recall #${id} updated successfully.` });
     } else {
@@ -131,12 +204,13 @@ exports.deleteRecall = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (db.isUsingOracle()) {
+      // Check for dependent batches
       const checkRes = await db.execute(`SELECT COUNT(*) AS count FROM BATCH WHERE recall_id = :id`, { id: Number(id) });
       const count = checkRes.rows[0]?.COUNT || 0;
       if (count > 0) {
         return res.status(409).json({
           success: false,
-          error: `Cannot delete Recall #${id}: ${count} manufactured batch(es) are linked to this recall. Referential integrity preserved.`
+          error: `Cannot delete Recall #${id}: Batches are currently linked to this recall notice. Referential integrity preserved.`
         });
       }
       await db.execute(`DELETE FROM RECALL WHERE recall_id = :id`, { id: Number(id) });
@@ -149,4 +223,3 @@ exports.deleteRecall = async (req, res, next) => {
     next(err);
   }
 };
-

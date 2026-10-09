@@ -28,6 +28,9 @@ PROMPT [5/6] Running 05_queries.sql...;
 PROMPT [6/6] Running 06_plsql.sql...;
 @@06_plsql.sql;
 
+PROMPT [7/7] Running 08_auth_schema.sql...;
+@@08_auth_schema.sql;
+
 PROMPT [DEMO] Running 07_demo.sql...;
 @@07_demo.sql;
 

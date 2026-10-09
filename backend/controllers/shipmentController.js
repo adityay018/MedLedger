@@ -1,9 +1,17 @@
 const oracledb = require('oracledb');
 const db = require('../config/db');
+const auditService = require('../services/auditService');
 
 exports.getAllShipments = async (req, res, next) => {
   try {
     const { status } = req.query;
+
+    // Organization scoping: non-admin/regulator parties only see shipments they send or receive
+    let orgFilter = null;
+    if (req.user && ['MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY'].includes(req.user.role) && req.user.partyId) {
+      orgFilter = Number(req.user.partyId);
+    }
+
     if (db.isUsingOracle()) {
       let sql = `
         SELECT s.shipment_id, s.sender_party_id, s.receiver_party_id,
@@ -18,16 +26,30 @@ exports.getAllShipments = async (req, res, next) => {
         LEFT JOIN CONTAINS c ON s.shipment_id = c.shipment_id
       `;
       const binds = {};
+      const where = [];
+
       if (status) {
-        sql += ` WHERE s.status = :status`;
+        where.push(`s.status = :status`);
         binds.status = status;
       }
+      if (orgFilter) {
+        where.push(`(s.sender_party_id = :orgPartyId OR s.receiver_party_id = :orgPartyId)`);
+        binds.orgPartyId = orgFilter;
+      }
+
+      if (where.length > 0) {
+        sql += ` WHERE ` + where.join(' AND ');
+      }
+
       sql += ` GROUP BY s.shipment_id, s.sender_party_id, s.receiver_party_id, s.shipment_date, s.status, s.mode, p_sender.party_name, p_receiver.party_name
                ORDER BY s.shipment_id DESC`;
       const result = await db.execute(sql, binds);
       return res.json({ success: true, count: result.rows.length, data: result.rows });
     } else {
-      const data = db.mock.getShipments(status);
+      let data = db.mock.getShipments(status);
+      if (orgFilter) {
+        data = data.filter(s => s.sender_party_id === orgFilter || s.receiver_party_id === orgFilter);
+      }
       return res.json({ success: true, count: data.length, data });
     }
   } catch (err) {
@@ -50,7 +72,7 @@ exports.getShipmentById = async (req, res, next) => {
         INNER JOIN PARTY p_receiver ON s.receiver_party_id = p_receiver.party_id
         WHERE s.shipment_id = :id
       `;
-      const result = await db.execute(sql, { id });
+      const result = await db.execute(sql, { id: Number(id) });
       if (!result.rows || result.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Shipment not found' });
       }
@@ -64,7 +86,7 @@ exports.getShipmentById = async (req, res, next) => {
         INNER JOIN DRUG d ON b.drug_id = d.drug_id
         WHERE c.shipment_id = :id
       `;
-      const pkgRes = await db.execute(pkgSql, { id });
+      const pkgRes = await db.execute(pkgSql, { id: Number(id) });
       const shipment = { ...result.rows[0], packages: pkgRes.rows };
       return res.json({ success: true, data: shipment });
     } else {
@@ -79,7 +101,22 @@ exports.getShipmentById = async (req, res, next) => {
 
 exports.createShipment = async (req, res, next) => {
   try {
-    const { sender_party_id, receiver_party_id, shipment_date, status, mode, package_ids } = req.body;
+    let { sender_party_id, receiver_party_id, shipment_date, status, mode, package_ids } = req.body;
+
+    // Enforce sender organization verification
+    if (req.user && ['MANUFACTURER', 'DISTRIBUTOR'].includes(req.user.role)) {
+      if (!req.user.partyId) {
+        return res.status(403).json({ success: false, error: 'Account not linked to an approved organization.' });
+      }
+      if (sender_party_id && Number(sender_party_id) !== Number(req.user.partyId)) {
+        return res.status(403).json({
+          success: false,
+          error: 'Ownership Violation: You can only originate shipments from your own organization.'
+        });
+      }
+      sender_party_id = req.user.partyId;
+    }
+
     if (!sender_party_id || !receiver_party_id) {
       return res.status(400).json({ success: false, error: 'sender_party_id and receiver_party_id are required' });
     }
@@ -127,13 +164,45 @@ exports.createShipment = async (req, res, next) => {
         }
       }
 
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_CREATED',
+          entityType: 'SHIPMENT',
+          entityId: shipmentId,
+          details: `Registered shipment #${shipmentId} (${mode || 'ROAD_LOGISTICS'}) from Party #${sender_party_id} to #${receiver_party_id}`,
+          req
+        });
+      }
+
       return res.status(201).json({
         success: true,
         message: `Shipment #${shipmentId} registered successfully via PL/SQL register_shipment procedure`,
-        data: { shipment_id: shipmentId, ...req.body }
+        data: { shipment_id: shipmentId, sender_party_id, receiver_party_id, shipment_date, status: status || 'CREATED', mode: mode || 'ROAD_LOGISTICS', package_ids }
       });
     } else {
-      const newShipment = db.mock.registerShipment(req.body);
+      const newShipment = db.mock.registerShipment({
+        sender_party_id,
+        receiver_party_id,
+        shipment_date,
+        status,
+        mode,
+        package_ids
+      });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_CREATED',
+          entityType: 'SHIPMENT',
+          entityId: newShipment.shipment_id,
+          details: `Registered shipment #${newShipment.shipment_id} from Party #${sender_party_id} to #${receiver_party_id}`,
+          req
+        });
+      }
+
       return res.status(201).json({
         success: true,
         message: `Shipment #${newShipment.shipment_id} registered successfully via register_shipment`,
@@ -150,15 +219,74 @@ exports.updateShipment = async (req, res, next) => {
     const { id } = req.params;
     const { status, mode } = req.body;
 
+    // Verify shipment existence and assignment
+    let existing = null;
+    if (db.isUsingOracle()) {
+      const checkRes = await db.execute(
+        `SELECT shipment_id, sender_party_id, receiver_party_id, status FROM SHIPMENT WHERE shipment_id = :id`,
+        { id: Number(id) }
+      );
+      if (!checkRes.rows || checkRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Shipment not found' });
+      existing = {
+        shipment_id: checkRes.rows[0].SHIPMENT_ID,
+        sender_party_id: checkRes.rows[0].SENDER_PARTY_ID,
+        receiver_party_id: checkRes.rows[0].RECEIVER_PARTY_ID,
+        status: checkRes.rows[0].STATUS
+      };
+    } else {
+      existing = db.mock.getShipmentById(id);
+      if (!existing) return res.status(404).json({ success: false, error: 'Shipment not found' });
+    }
+
+    // Role ownership check: Distributor / Manufacturer / Pharmacy can ONLY update shipments assigned to them
+    if (req.user && ['MANUFACTURER', 'DISTRIBUTOR', 'PHARMACY'].includes(req.user.role)) {
+      const userPartyId = Number(req.user.partyId);
+      const isSender = Number(existing.sender_party_id) === userPartyId;
+      const isReceiver = Number(existing.receiver_party_id) === userPartyId;
+
+      if (!isSender && !isReceiver) {
+        return res.status(403).json({
+          success: false,
+          error: 'Ownership Violation: You can only update shipments assigned to your organization.'
+        });
+      }
+    }
+
     if (db.isUsingOracle()) {
       await db.execute(
         `UPDATE SHIPMENT SET status = NVL(:status, status), mode = NVL(:mode, mode) WHERE shipment_id = :id`,
-        { id, status: status || null, mode: mode || null }
+        { id: Number(id), status: status || null, mode: mode || null }
       );
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_UPDATED',
+          entityType: 'SHIPMENT',
+          entityId: id,
+          details: `Updated shipment #${id} status: ${status || 'unchanged'}`,
+          req
+        });
+      }
+
       return res.json({ success: true, message: 'Shipment updated successfully' });
     } else {
       const updated = db.mock.updateShipment(id, req.body);
       if (!updated) return res.status(404).json({ success: false, error: 'Shipment not found' });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_UPDATED',
+          entityType: 'SHIPMENT',
+          entityId: id,
+          details: `Updated shipment #${id} status: ${status || 'unchanged'}`,
+          req
+        });
+      }
+
       return res.json({ success: true, message: 'Shipment updated successfully', data: updated });
     }
   } catch (err) {
@@ -170,10 +298,37 @@ exports.deleteShipment = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (db.isUsingOracle()) {
-      await db.execute(`DELETE FROM SHIPMENT WHERE shipment_id = :id`, { id });
+      await db.execute(`DELETE FROM CONTAINS WHERE shipment_id = :id`, { id: Number(id) });
+      await db.execute(`DELETE FROM SHIPMENT WHERE shipment_id = :id`, { id: Number(id) });
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_DELETED',
+          entityType: 'SHIPMENT',
+          entityId: id,
+          details: `Deleted shipment #${id}`,
+          req
+        });
+      }
+
       return res.json({ success: true, message: 'Shipment deleted successfully' });
     } else {
       db.mock.deleteShipment(id);
+
+      if (req.user) {
+        await auditService.logAction({
+          userId: req.user.userId,
+          userEmail: req.user.email,
+          action: 'SHIPMENT_DELETED',
+          entityType: 'SHIPMENT',
+          entityId: id,
+          details: `Deleted shipment #${id}`,
+          req
+        });
+      }
+
       return res.json({ success: true, message: 'Shipment deleted successfully' });
     }
   } catch (err) {

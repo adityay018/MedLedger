@@ -17,6 +17,8 @@ let packages = JSON.parse(JSON.stringify(initialData.packages));
 let shipments = JSON.parse(JSON.stringify(initialData.shipments));
 let contains = JSON.parse(JSON.stringify(initialData.contains));
 let dispensings = JSON.parse(JSON.stringify(initialData.dispensings));
+let users = JSON.parse(JSON.stringify(initialData.users || []));
+let auditLogs = JSON.parse(JSON.stringify(initialData.auditLogs || []));
 
 // Helper: resolve party role
 function resolvePartyRole(partyId) {
@@ -139,13 +141,28 @@ const mockDbService = {
   },
 
   createDrug: (data) => {
+    const cleanName = (data.drug_name || '').trim().toLowerCase();
+    const cleanStrength = (data.strength || '').trim().toLowerCase();
+    const cleanDosage = (data.dosage_form || '').trim().toLowerCase();
+
+    const duplicate = drugs.find(d => 
+      d.drug_name.trim().toLowerCase() === cleanName &&
+      d.strength.trim().toLowerCase() === cleanStrength &&
+      d.dosage_form.trim().toLowerCase() === cleanDosage
+    );
+    if (duplicate) {
+      const err = new Error(`Catalogue Conflict: A drug with name "${data.drug_name}", strength "${data.strength}", and dosage form "${data.dosage_form}" already exists in the shared catalogue.`);
+      err.statusCode = 409;
+      throw err;
+    }
+
     const nextId = Math.max(...drugs.map(d => d.drug_id), 100) + 1;
     const newDrug = {
       drug_id: nextId,
-      drug_name: data.drug_name,
+      drug_name: data.drug_name.trim(),
       description: data.description || '',
-      strength: data.strength,
-      dosage_form: data.dosage_form
+      strength: data.strength.trim(),
+      dosage_form: data.dosage_form.trim()
     };
     drugs.push(newDrug);
     return newDrug;
@@ -1341,6 +1358,138 @@ ORDER BY r.recall_id, pkg.package_id;`,
       recentRecalls,
       recentDispensings
     };
+  },
+
+  // --------------------------------------------------------------------------
+  // USER AUTHENTICATION & ACCESS CONTROL (Simulation Storage)
+  // --------------------------------------------------------------------------
+  getUsers: () => {
+    return users.map(u => {
+      const p = u.party_id ? parties.find(x => x.party_id === u.party_id) : null;
+      const { password_hash, ...safeUser } = u;
+      return {
+        ...safeUser,
+        org_name: p ? p.party_name : u.requested_org_name || null
+      };
+    });
+  },
+
+  getUserById: (id, includeHash = false) => {
+    const numId = Number(id);
+    const u = users.find(x => x.user_id === numId);
+    if (!u) return null;
+    const p = u.party_id ? parties.find(x => x.party_id === u.party_id) : null;
+    if (includeHash) {
+      return { ...u, org_name: p ? p.party_name : u.requested_org_name || null };
+    }
+    const { password_hash, ...safeUser } = u;
+    return { ...safeUser, org_name: p ? p.party_name : u.requested_org_name || null };
+  },
+
+  getUserByEmail: (email) => {
+    if (!email) return null;
+    const cleanEmail = email.trim().toLowerCase();
+    const u = users.find(x => x.email.toLowerCase() === cleanEmail);
+    if (!u) return null;
+    const p = u.party_id ? parties.find(x => x.party_id === u.party_id) : null;
+    return { ...u, org_name: p ? p.party_name : u.requested_org_name || null };
+  },
+
+  createUser: (userData) => {
+    const nextId = Math.max(...users.map(u => u.user_id), 0) + 1;
+    const newUser = {
+      user_id: nextId,
+      name: userData.name,
+      email: userData.email.trim().toLowerCase(),
+      password_hash: userData.password_hash,
+      role: userData.role || 'PENDING',
+      party_id: userData.party_id ? Number(userData.party_id) : null,
+      status: userData.status || 'PENDING',
+      requested_role: userData.requested_role || userData.role,
+      requested_org_name: userData.requested_org_name || null,
+      organization_details: userData.organization_details || null,
+      created_at: new Date().toISOString().split('T')[0],
+      approved_at: userData.approved_at || null,
+      approved_by: userData.approved_by || null
+    };
+    users.push(newUser);
+    return mockDbService.getUserById(nextId);
+  },
+
+  updateUser: (id, updates) => {
+    const numId = Number(id);
+    const idx = users.findIndex(u => u.user_id === numId);
+    if (idx === -1) return null;
+    users[idx] = { ...users[idx], ...updates, user_id: numId };
+    return mockDbService.getUserById(numId);
+  },
+
+  approveUser: (id, { role, party_id, approved_by }) => {
+    const numId = Number(id);
+    const user = users.find(u => u.user_id === numId);
+    if (!user) return null;
+    user.status = 'APPROVED';
+    if (role) user.role = role;
+    if (party_id !== undefined) user.party_id = party_id ? Number(party_id) : null;
+    user.approved_at = new Date().toISOString().split('T')[0];
+    user.approved_by = approved_by ? Number(approved_by) : 1;
+    return mockDbService.getUserById(numId);
+  },
+
+  rejectUser: (id, { rejected_by, reason } = {}) => {
+    const numId = Number(id);
+    const user = users.find(u => u.user_id === numId);
+    if (!user) return null;
+    user.status = 'REJECTED';
+    user.approved_by = rejected_by ? Number(rejected_by) : null;
+    user.approved_at = new Date().toISOString().split('T')[0];
+    return mockDbService.getUserById(numId);
+  },
+
+  setUserStatus: (id, status) => {
+    const numId = Number(id);
+    const user = users.find(u => u.user_id === numId);
+    if (!user) return null;
+    user.status = status;
+    return mockDbService.getUserById(numId);
+  },
+
+  // --------------------------------------------------------------------------
+  // AUDIT LOGS (Simulation Storage)
+  // --------------------------------------------------------------------------
+  createAuditLog: (logData) => {
+    const nextId = Math.max(...auditLogs.map(l => l.log_id), 0) + 1;
+    const newLog = {
+      log_id: nextId,
+      user_id: logData.user_id || null,
+      user_email: logData.user_email || 'anonymous',
+      action: logData.action,
+      entity_type: logData.entity_type || null,
+      entity_id: logData.entity_id != null ? String(logData.entity_id) : null,
+      details: typeof logData.details === 'object' ? JSON.stringify(logData.details) : logData.details,
+      ip_address: logData.ip_address || '127.0.0.1',
+      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    };
+    auditLogs.push(newLog);
+    return newLog;
+  },
+
+  getAuditLogs: ({ limit = 50, action, entityType, userId } = {}) => {
+    let result = [...auditLogs];
+    if (action) {
+      result = result.filter(l => l.action.toLowerCase() === action.toLowerCase());
+    }
+    if (entityType) {
+      result = result.filter(l => l.entity_type && l.entity_type.toLowerCase() === entityType.toLowerCase());
+    }
+    if (userId) {
+      result = result.filter(l => l.user_id === Number(userId));
+    }
+    result.sort((a, b) => b.log_id - a.log_id);
+    return result.slice(0, Number(limit)).map(l => ({
+      ...l,
+      timestamp: l.created_at
+    }));
   }
 
 };
